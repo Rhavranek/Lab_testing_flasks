@@ -1,0 +1,601 @@
+---
+title: "November 2018 testing"
+author: "Rachel Havranek"
+date: "11/6/2018"
+output: html_document
+---
+```{r}
+setwd("/Volumes/HAVRANEK18")  
+library(ggplot2)
+library (plotly)
+library (lubridate)
+library(tidyverse)
+library(grid)
+library(hms)
+library(fpp2)
+library(zoo)
+
+#derivative function 
+deriv <- function(x, y) {
+  diffvar <- diff(y) / diff(x)
+}
+
+peaks.read <- function(filepath){
+  	files <-  list.files(path=filepath, recursive = T,full.names = T) 
+	#lists the file names in the filepath directory
+  	tables <- lapply(files, read.table,header = T, stringsAsFactors = F) 
+	#reads in the files
+  	df <- do.call("rbind",tables) #combines all the tables into one dataframe
+  	df2 <- df[,c(1:2,17:19)] #subsets the dataframe to include only necessary columns
+  	df3 <- df2[complete.cases(df2),] #subsets the dataframe to include only 
+	#complete cases, eliminating rows at the end that aren't complete
+  	return(df3)
+	} #peaks.read is a function that will read files from all sub-folders of the
+	#directory named in filepath and combine them into one dataframe
+
+h2o_slope <- function(data,window){
+  H2O_Slope_Window <- numeric()
+  for (i in 1:nrow(data)){    
+    if(i<=window/2){                                                                   
+      H2O_Slope_Window[i] = 
+        as.numeric(coef(lm(data$H2O[1:(i+window/2)]~
+		data$seconds[1:(i+window/2)]))[2])
+    }else{
+      if(i >= (nrow(data)-window/2)){
+        H2O_Slope_Window[i] = 
+          as.numeric(coef(lm(data$H2O[(i-window/2):nrow(data)]~
+		data$seconds[(i-window/2):nrow(data)]))[2])
+      }else{
+        H2O_Slope_Window[i] = 
+          as.numeric(coef(lm(data$H2O[(i-window/2):(i+window/2)]~
+		data$seconds[(i-window/2):(i+window/2)]))[2])       
+      }
+    }
+  }
+  return(H2O_Slope_Window)
+} #h2o_slope will calculate the slope of h2o vs. experiment second in a moving window  
+```
+
+#Friday, November 2, 2018 
+```{r Friday 2, 2018 load in data}
+#folder_110218 <- "/Volumes/HAVRANEK18/110218"
+#data_110218 <- peaks.read(folder_110218) 
+#saveRDS(data_110218, "data_110218.RDS")
+data_110218 <- readRDS("data_110218.RDS")
+
+data_110218 <- data_110218 %>% mutate(
+  MST = 
+    paste(data_110218$DATE, data_110218$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+all_110218 <- ggplot(data_110218, aes(MST, H2O))+
+  labs(x="Time (MST)", title="November 02, 2018")+
+  geom_point()+
+  theme_classic()
+
+all_110218
+```
+
+# Saturday, November 03, 2018 
+```{r 110318 load in data}
+#folder_110318 <- "/Volumes/HAVRANEK18/110318"
+#data_110318 <- peaks.read(folder_110318) 
+#saveRDS(data_110318, "data_110318.RDS")
+data_110318 <- readRDS("data_110318.RDS")
+
+data_110318 <- data_110318 %>% 
+  mutate(
+  MST = 
+    paste(data_110318$DATE, data_110318$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+data_110318 <- data_110318 %>% 
+  filter(MST> "2018-11-03 10:45:00")
+
+all_110318 <- ggplot(data_110318, aes(MST, H2O))+
+  labs(x="Time (MST)", title="November 03, 2018")+
+  geom_point()+
+  theme_classic()
+print(all_110318) 
+
+d18O_110318 <-ggplot(data_110318, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", title="November 03, 2018")+
+  geom_point()+
+  scale_y_continuous(limits = c(-25, -20))
+  theme_classic()
+
+print(d18O_110318)
+
+#ggplotly(all_110318)
+```
+## Investigating holding a dry signal 
+```{r Investigating holding a dry signal}
+dry<- filter (data_110318, MST> "2018-11-03 10:45:00" & MST <"2018-11-03 12:00:00")
+H20_dry <- ggplot(dry, aes(MST, H2O))+
+  labs(x="Time (MST)", title="November 03, 2018")+
+  geom_point()+
+  scale_y_continuous(limits = c(200, 750))+
+  theme_classic()
+H20_dry
+```
+## Input isotope values 110318 tests
+```{r Input isotope values 110318 tests}
+fill_110318 <- filter(data_110318, MST> "2018-11-03 12:00:00" & MST <"2018-11-03 16:00:00")
+
+grob1 <- grobTree(textGrob("Bottle 16", x=0.17,  y=0.85, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+grob2 <- grobTree(textGrob("Bottle 14", x=0.33,  y=0.85, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+grob3 <- grobTree(textGrob("Bottle 2", x=0.5,  y=0.85, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+grob4 <- grobTree(textGrob("Bottle 15", x=0.75,  y=0.85, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+fill_concen_110318 <- ggplot(fill_110318, aes(MST, H2O))+
+  labs(x="Time (MST)", title="November 03, 2018")+
+  geom_point()+
+  theme_classic()+
+  annotation_custom(grob1)+
+  annotation_custom(grob2)+
+  annotation_custom(grob3)+
+  annotation_custom(grob4)
+
+fill_concen_110318
+
+fill_O18_110318<- ggplot(fill_110318, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", title="November 03, 2018")+
+  geom_point()+
+  theme_classic()+
+  scale_y_continuous(limits = c(-25,-20))+
+  annotation_custom(grob1)+
+  annotation_custom(grob2)+
+  annotation_custom(grob3)+
+  annotation_custom(grob4)
+
+fill_O18_110318
+
+fill_H2_110318<- ggplot(fill_110318, aes(MST, Delta_D_H))+
+  labs(x="Time (MST)", title="November 03, 2018")+
+  geom_point()+
+  theme_classic()+
+  scale_y_continuous(limits = c(-190,-180))+
+  annotation_custom(grob1)+
+  annotation_custom(grob2)+
+  annotation_custom(grob3)+
+  annotation_custom(grob4)
+
+fill_H2_110318
+
+```
+## 3 Hour test results from 110318 
+```{r 110318 results}
+Out_110318 <- data_110318 %>% 
+  filter(MST> "2018-11-03 16:10:00") 
+
+Out_110318_d18O <- ggplot(Out_110318 , aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", title="November 03, 2018")+
+  geom_point()+
+  scale_y_continuous(limits = c(-25, -20))
+  theme_classic()
+
+
+Out_110318$seconds <- as.numeric(row.names(Out_110318))
+ 
+Out_110318 <- Out_110318 %>% 
+  mutate(
+  m_11= rollmean(H2O, k=11, fill=NA),
+  m_25=rollmean(H2O, k=25, fill=NA)) %>% 
+  subset(seconds >13 & seconds<(nrow(Out_110318)-13))
+  
+lab1<-grobTree(textGrob("Bottle 16", x=0.17,  y=0.9, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+lab2 <- grobTree(textGrob("Bottle 14", x=0.42,  y=0.9, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+lab3 <- grobTree(textGrob("Bottle 2", x=0.6,  y=0.9, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+lab4 <- grobTree(textGrob("Bottle 15", x=0.85,  y=0.9, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+out_concen_110318 <- ggplot(Out_110318, aes(MST, H2O))+
+  labs(x="Time (MST)", title="November 03, 2018")+
+  geom_point()+
+  theme_classic()+
+  annotation_custom(lab1)+
+  annotation_custom(lab2)+
+  annotation_custom(lab3)+
+  annotation_custom(lab4)
+
+print(out_concen_110318)
+
+#Initialize data frame
+Out_110318_fd<-as.data.frame(1:(nrow(Out_110318)-1))
+
+# mutate in the first derivatives, and the rolling first derivatives 
+Out_110318_fd<- Out_110318_fd %>% 
+  mutate(
+    fd = deriv(Out_110318$seconds, Out_110318$H2O),
+    fd11=deriv(Out_110318$seconds, Out_110318$m_11),
+    fd25=deriv(Out_110318$seconds, Out_110318$m_25)
+  )
+
+#Force column names so I can do the second derivative 
+colnames(Out_110318_fd, do.NULL = FALSE)
+colnames(Out_110318_fd)<-c("seconds", "fd", "fd11", "fd25")
+
+#Initialize second derivative data frame
+Out_110318_sd <- as.data.frame(1:(nrow(Out_110318_fd)-1))
+
+#Mutate in the second derivatives 
+Out_110318_sd <- Out_110318_sd %>% 
+  mutate(
+    sd=deriv(Out_110318_fd$seconds, Out_110318_fd$fd),
+    sd11=deriv(Out_110318_fd$seconds, Out_110318_fd$fd11),
+    sd25=deriv(Out_110318_fd$seconds, Out_110318_fd$fd25)
+  )
+
+#Force column names of the second derivative df 
+colnames(Out_110318_sd, do.NULL = FALSE)
+colnames(Out_110318_sd)<-c("seconds", "sd", "sd11", "sd25")
+
+sd_110318_plot<-ggplot(Out_110318_sd)+
+  geom_point(aes(seconds, sd),colour = "green")+
+  geom_point(aes(seconds, sd11),colour = "blue")+
+  geom_point(aes(seconds, sd25), colour = "red")+
+  annotation_custom(lab1)+
+  annotation_custom(lab2)+
+  annotation_custom(lab3)+
+  annotation_custom(lab4)+
+  scale_y_continuous(limits = c(-5, 5))+
+  labs(x="Seconds", title="second derivative")+
+  theme_classic()
+
+print(sd_110318_plot)
+ggplotly(sd_110318_plot)
+
+
+
+results_16_1103018 <- filter(Out_110318, seconds>1440 & seconds <1741)
+results_16_df <- data.frame (
+   "Valco_position" = 16,
+   "Time_averaged" = 5
+    "d18O_mean" = mean (Delta_18_16),
+    "d18O_sd" = sd(Delta_18_16),
+    "dD_mean" = mean (Delta_D_H),
+    "dD_sd" = sd(Delta_D_H)
+    )
+
+results_14_110318 <- Out_110318 %>% 
+  filter(seconds>3000 & seconds <3301) %>% 
+  mutate( 
+    sample = "11_03_18 Bottle 14",
+    d18O_mean = dplyr::mean (Delta_18_16),
+    d18O_sd = sd(Delta_18_16),
+    dD_mean = mean (Delta_D_H),
+    dD_sd = sd(Delta_D_H)
+    )
+
+results_2_110318 <-  Out_110318 %>% 
+  filter (seconds >4750 & seconds <5051) %>%
+mutate( 
+    sample = "11_03_18 Bottle 2",
+    d18O_mean = dplyr::mean (Delta_18_16),
+    d18O_sd = sd(Delta_18_16),
+    dD_mean = mean (Delta_D_H),
+    dD_sd = sd(Delta_D_H)
+    )
+
+results_15_110318 <- Out_110318 %>% 
+  filter(seconds > 6600 & seconds <6901) %>% 
+  mutate( 
+    sample = "11_03_18 Bottle 2",
+    d18O_mean = dplyr::mean (Delta_18_16),
+    d18O_sd = sd(Delta_18_16),
+    dD_mean = mean (Delta_D_H),
+    dD_sd = sd(Delta_D_H)
+    )
+```
+
+
+# Sunday, November 4 
+There isn't much in this data file - from 10 - 5 I was mostly drying out bottles. from 4:40 - 5 pm I ran water through the jumper loop, so I"ll use that data for a correction 
+```{r 1104018 load in data}
+# folder_110418 <- "/Volumes/HAVRANEK18/110418"
+# data_110418 <- peaks.read(folder_110418) 
+# saveRDS(data_110418, "data_110418.RDS")
+data_110418 <- readRDS("data_110418.RDS")
+
+data_110418 <- data_110418 %>% mutate(
+  MST = 
+    paste(data_110418$DATE, data_110418$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+all_110418 <- ggplot(data_110418, aes(MST, H2O))+
+  labs(x="Time (MST)", title="November 04, 2018")+
+  geom_point()+
+  theme_classic()
+
+all_110418
+
+start_value_110418 <- data_110418 %>% 
+  filter(MST> "2018-11-04 16:45:00" & MST < "2018-11-04 16:55:00") %>% 
+  mutate( 
+    sample = "Jumper Loop at 4:40 pm on 11-04-18",
+    d18O_mean = dplyr::mean (Delta_18_16),
+    d18O_sd = sd(Delta_18_16),
+    dD_mean = mean (Delta_D_H),
+    dD_sd = sd(Delta_D_H)
+    )
+```
+
+
+# Monday, November 5 
+In this data file are two important things: The first is data from the evening of November 4, and the second is data from the day of Monday November 5. 
+```{r 110518 load in data}
+# folder_110518 <- "/Volumes/HAVRANEK18/110518"
+# data_110518 <- peaks.read(folder_110518) 
+# saveRDS(data_110518, "data_110518.RDS")
+data_110518 <- readRDS("data_110518.RDS")
+
+data_110518 <- data_110518 %>% mutate(
+  MST = 
+    paste(data_110518$DATE, data_110518$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+all_110518 <- ggplot(data_110518, aes(MST, H2O))+
+  labs(x="Time (MST)", title="November 05, 2018")+
+  geom_point()+
+  theme_classic()
+
+all_110518
+```
+
+### Filling Data from the evening 110418 
+```{r Evening 110418}
+evening_110418 <- data_110518 %>% 
+  filter( MST < "2018-11-04 23:00:00")
+
+fill_110418 <- evening_110418 %>% 
+  filter( MST < "2018-11-04 20:00:00")
+
+label1 <- grobTree(textGrob("Bottle 16", x=0.1,  y=0.95, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+label2 <- grobTree(textGrob("Bottle 15", x=0.35,  y=0.95, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+label3 <- grobTree(textGrob("Bottle 14", x=0.55,  y=0.95, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+label4 <- grobTree(textGrob("Bottle 2", x=0.8,  y=0.95, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+label5 <- grobTree(textGrob("Jumper", x=0.9,  y=0.95, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+fill_concen_110418 <- ggplot(fill_110418, aes(MST, H2O))+
+  labs(x="Time (MST)", title="November 03, 2018")+
+  geom_point()+
+  theme_classic()+
+  annotation_custom(label1)+
+  annotation_custom(label2)+
+  annotation_custom(label3)+
+  annotation_custom(label4)+
+  annotation_custom(label5)
+
+print(fill_concen_110418)
+
+fill_16_110418 <- filter(evening_110418, MST > "2018-11-04 17:27:00" & MST < "2018-11-04 17:37:00")
+df16 <- data.frame(
+  "valco_position" = 16,
+  "mean_d18O" = mean (fill_16_110418$Delta_18_16),
+  "sd_d18O" = sd (fill_16_110418$Delta_18_16),
+  "mean_dD" = mean(fill_16_110418$Delta_D_H),
+  "sd_dD" = sd(fill_16_110418$Delta_D_H),
+  stringsAsFactors = FALSE
+)
+
+fill_15_110418 <- filter (evening_110418, MST > "2018-11-04 18:08:00" & MST < "2018-11-04 18:18:00")
+df15 <- data.frame(
+  "valco_position" = 15,
+  "mean_d18O" = mean (fill_15_110418$Delta_18_16),
+  "sd_d18O" = sd (fill_15_110418$Delta_18_16),
+  "mean_dD" = mean(fill_15_110418$Delta_D_H),
+  "sd_dD" = sd(fill_15_110418$Delta_D_H),
+  stringsAsFactors = FALSE
+)
+
+fill_14_110418 <- filter (evening_110418, MST > "2018-11-04 18:48:00" & MST < "2018-11-04 18:58:00")
+df14 <- data.frame(
+  "valco_position" = 14,
+  "mean_d18O" = mean (fill_14_110418$Delta_18_16),
+  "sd_d18O" = sd (fill_14_110418$Delta_18_16),
+  "mean_dD" = mean(fill_14_110418$Delta_D_H),
+  "sd_dD" = sd(fill_14_110418$Delta_D_H),
+  stringsAsFactors = FALSE
+)
+
+fill_2_110418 <- filter (evening_110418, MST > "2018-11-04 19:37:00" & MST < "2018-11-04 19:47:00")
+df2 <- data.frame(
+  "valco_position" = 2,
+  "mean_d18O" = mean (fill_2_110418$Delta_18_16),
+  "sd_d18O" = sd (fill_2_110418$Delta_18_16),
+  "mean_dD" = mean(fill_2_110418$Delta_D_H),
+  "sd_dD" = sd(fill_2_110418$Delta_D_H),
+  stringsAsFactors = FALSE
+)
+
+fill_jumper_110418 <- filter (evening_110418, MST > "2018-11-04 19:50:00" & MST < "2018-11-04 19:59:00")
+df1 <- data.frame(
+  "valco_position" = 1,
+  "mean_d18O" = mean (fill_jumper_110418$Delta_18_16),
+  "sd_d18O" = sd (fill_jumper_110418$Delta_18_16),
+  "mean_dD" = mean(fill_jumper_110418$Delta_D_H),
+  "sd_dD" = sd(fill_jumper_110418$Delta_D_H),
+  stringsAsFactors = FALSE
+)
+
+fill_summary <-  bind_rows(df16, df15, df14, df2, df1)
+```
+
+
+### Results from 110418 
+```{r derivatives of 110418 data}
+Out_110418 <- evening_110418 %>% 
+  filter( MST >"2018-11-04 20:00:00" & MST < "2018-11-04 22:00:00")
+
+Out_110418$seconds <- as.numeric(row.names(Out_110418))
+ 
+Out_110418 <- Out_110418 %>% 
+  mutate(
+  m_11= rollmean(H2O, k=11, fill=NA),
+  m_25=rollmean(H2O, k=25, fill=NA)) %>% 
+  subset(seconds >13 & seconds<(nrow(Out_110418)-13))
+
+
+#Initialize data frame
+Out_110418_fd<-as.data.frame(1:(nrow(Out_110418)-1))
+
+# mutate in the first derivatives, and the rolling first derivatives 
+Out_110418_fd<- Out_110418_fd %>% 
+  mutate(
+    fd = deriv(Out_110418$seconds, Out_110418$H2O),
+    fd11=deriv(Out_110418$seconds, Out_110418$m_11),
+    fd25=deriv(Out_110418$seconds, Out_110418$m_25)
+  )
+
+#Force column names so I can do the second derivative 
+colnames(Out_110418_fd, do.NULL = FALSE)
+colnames(Out_110418_fd)<-c("seconds", "fd", "fd11", "fd25")
+
+#Initialize second derivative data frame
+Out_110418_sd <- as.data.frame(1:(nrow(Out_110418_fd)-1))
+
+#Mutate in the second derivatives 
+Out_110418_sd <- Out_110418_sd %>% 
+  mutate(
+    sd=deriv(Out_110418_fd$seconds, Out_110418_fd$fd),
+    sd11=deriv(Out_110418_fd$seconds, Out_110418_fd$fd11),
+    sd25=deriv(Out_110418_fd$seconds, Out_110418_fd$fd25)
+  )
+
+#Force column names of the second derivative df 
+colnames(Out_110418_sd, do.NULL = FALSE)
+colnames(Out_110418_sd)<-c("seconds", "sd", "sd11", "sd25")
+
+sd_110418_plot<-ggplot(Out_110418_sd)+
+  geom_point(aes(seconds, sd),colour = "green")+
+  geom_point(aes(seconds, sd11),colour = "blue")+
+  geom_point(aes(seconds, sd25), colour = "red")+
+  annotation_custom(label1)+
+  annotation_custom(label2)+
+  annotation_custom(label3)+
+  annotation_custom(label4)+
+  scale_y_continuous(limits = c(-5, 5))+
+  labs(x="Seconds", title="second derivative")+
+  theme_classic()
+
+print(sd_110418_plot)
+ggplotly(sd_110418_plot)
+
+#Create a data frame for each bottle 
+results_110418_16 <- filter(Out_110418, seconds > 900 & seconds < 1200)
+results_110418_15 <- filter (Out_110418, seconds > 2750 & seconds < 3050)
+results_110418_14 <- filter (Out_110418, seconds > 4600 & seconds < 4900)
+results_110418_2 <- filter (Out_110418, seconds > 6500 & seconds < 6800)
+results_110418_1 <- filter (Out_110418, seconds > 7874 & seconds < 8400)
+
+#Create a data frame for each bottle and then smoosh the dfs together
+R16_df <- data.frame(
+  "valco_position" = 16,
+  "Time averaged" = 5,
+  "Type" = "result",
+  "mean_d18O" = mean (results_110418_16$Delta_18_16),
+  "sd_d18O" = sd (results_110418_16$Delta_18_16),
+  "mean_dD" = mean(results_110418_16$Delta_D_H),
+  "sd_dD" = sd(results_110418_16$Delta_D_H),
+  stringsAsFactors = FALSE
+)
+
+R15_df <- data.frame(
+  "valco_position" = 15,
+  "Time averaged" = 5,
+  "Type" = "result",
+  "mean_d18O" = mean (results_110418_15$Delta_18_16),
+  "sd_d18O" = sd (results_110418_15$Delta_18_16),
+  "mean_dD" = mean(results_110418_15$Delta_D_H),
+  "sd_dD" = sd(results_110418_15$Delta_D_H),
+  stringsAsFactors = FALSE
+)
+
+R14_df <- data.frame(
+  "valco_position" = 14,
+  "Time averaged" = 5,
+  "Type" = "result",
+  "mean_d18O" = mean (results_110418_14$Delta_18_16),
+  "sd_d18O" = sd (results_110418_14$Delta_18_16),
+  "mean_dD" = mean(results_110418_14$Delta_D_H),
+  "sd_dD" = sd(results_110418_14$Delta_D_H),
+  stringsAsFactors = FALSE
+)
+
+R2_df <- data.frame(
+  "valco_position" = 2,
+  "Time averaged" = 5,
+  "Type" = "result",
+  "mean_d18O" = mean (results_110418_2$Delta_18_16),
+  "sd_d18O" = sd (results_110418_2$Delta_18_16),
+  "mean_dD" = mean(results_110418_2$Delta_D_H),
+  "sd_dD" = sd(results_110418_2$Delta_D_H),
+  stringsAsFactors = FALSE
+)
+
+R1_df<- data.frame(
+  "valco_position" = 1,
+  "Time averaged" = 8.76,
+  "Type" = "Correction",
+  "mean_d18O" = mean (results_110418_1$Delta_18_16),
+  "sd_d18O" = sd (results_110418_1$Delta_18_16),
+  "mean_dD" = mean(results_110418_1 $Delta_D_H),
+  "sd_dD" = sd(results_110418_1 $Delta_D_H),
+  stringsAsFactors = FALSE
+)
+
+results_110418_summary <- bind_rows(R16_df, R15_df, R14_df, R2_df, R1_df)
+```
+
+
+```{r 110618 load in data}
+folder_110618 <- "/Volumes/HAVRANEK18/110618"
+data_110618 <- peaks.read(folder_110618) 
+saveRDS(data_110618, "data_110618.RDS")
+#data_110618 <- readRDS("data_110618.RDS")
+
+data_110618 <- data_110618 %>% mutate(
+  MST = 
+    paste(data_110618$DATE, data_110618$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+all_110618 <- ggplot(data_110618, aes(MST, H2O))+
+  labs(x="Time (MST)", title="November 06, 2018")+
+  geom_point()+
+  theme_classic()
+
+all_110618
+```
+

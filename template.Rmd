@@ -1,0 +1,81 @@
+---
+title: "Template"
+subtitle: "SUBTITLE"
+author: "AUTHORS"
+date: "`r format(Sys.Date(), '%d %b %Y')`"
+output:
+  html_document: 
+    df_print: paged
+    number_sections: no
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include = FALSE}
+# load libraries
+library(tidyverse) 
+library(latex2exp)
+library(reticulate)
+# load python
+use_condaenv("class", conda = "auto", required = TRUE)
+# set global options for figure output
+knitr::opts_chunk$set(
+  dev = c("png", "pdf"), 
+  dev.args = list(pdf = list(encoding = "WinAnsi", useDingbats = FALSE)),
+  fig.keep = "all", fig.path = file.path("fig_output", "fig_prefix_"))
+```
+
+# $\LaTeX$ Math
+
+This is just markdown that can include latex math.
+
+$$
+\begin{align}
+\dot{x} & = \sigma(y-x) \\
+\dot{y} & = \rho x - y - xz \\
+\dot{z} & = -\beta z + xy
+\end{align}
+$$
+
+# Python
+
+```{python}
+# python version
+import sys
+print(sys.version)
+```
+
+```{python}
+# working directory
+import os
+print(os.getcwd())
+```
+
+```{python}
+# script files
+exec(open(os.path.join("scripts", "functions.py")).read())
+print(test_add(2, 5))
+```
+
+# R
+
+```{r}
+# R version
+R.version.string
+```
+
+```{r}
+# working directory
+getwd()
+```
+
+```{r}
+# script files
+source(file.path("scripts", "functions.R"))
+print(test_add(2,5))
+```
+

@@ -1,0 +1,1577 @@
+---
+title: "Early USGS bottle testing"
+author: "Rachel Havranek"
+date: "5/15/2018"
+output: html_document
+---
+```{r wd, libraries, and custom functions, messages = FALSE }
+setwd("/Volumes/HAVRANEK18")  
+library(ggplot2)
+library (plotly)
+library (lubridate)
+library(tidyverse)
+library(hms)
+library(fpp2)
+library(zoo)
+
+#derivative function 
+deriv <- function(x, y) {
+  diffvar <- diff(y) / diff(x)
+}
+
+
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }}
+
+peaks.read <- function(filepath){
+  	files <-  list.files(path=filepath, recursive = T,full.names = T) 
+	#lists the file names in the filepath directory
+  	tables <- lapply(files, read.table,header = T, stringsAsFactors = F) 
+	#reads in the files
+  	df <- do.call("rbind",tables) #combines all the tables into one dataframe
+  	df2 <- df[,c(1:2,17:19)] #subsets the dataframe to include only necessary columns
+  	df3 <- df2[complete.cases(df2),] #subsets the dataframe to include only 
+	#complete cases, eliminating rows at the end that aren't complete
+  	return(df3)
+	} #peaks.read is a function that will read files from all sub-folders of the
+	#directory named in filepath and combine them into one dataframe
+
+h2o_slope <- function(data,window){
+  H2O_Slope_Window <- numeric()
+  for (i in 1:nrow(data)){    
+    if(i<=window/2){                                                                   
+      H2O_Slope_Window[i] = 
+        as.numeric(coef(lm(data$H2O[1:(i+window/2)]~
+		data$seconds[1:(i+window/2)]))[2])
+    }else{
+      if(i >= (nrow(data)-window/2)){
+        H2O_Slope_Window[i] = 
+          as.numeric(coef(lm(data$H2O[(i-window/2):nrow(data)]~
+		data$seconds[(i-window/2):nrow(data)]))[2])
+      }else{
+        H2O_Slope_Window[i] = 
+          as.numeric(coef(lm(data$H2O[(i-window/2):(i+window/2)]~
+		data$seconds[(i-window/2):(i+window/2)]))[2])       
+      }
+    }
+  }
+  return(H2O_Slope_Window)
+} #h2o_slope will calculate the slope of h2o vs. experiment second in a moving window  
+
+```
+
+05/10/18
+```{r  OG Erik code}
+folder <- "/Volumes/HAVRANEK18/051018"
+#filepath to folder that contains the dat files to be analyzed
+
+peaks.read <- function(filepath){
+  	files <-  list.files(path=filepath, recursive = T,full.names = T) 
+	#lists the file names in the filepath directory
+  	tables <- lapply(files, read.table,header = T, stringsAsFactors = F) 
+	#reads in the files
+  	df <- do.call("rbind",tables) #combines all the tables into one dataframe
+  	df2 <- df[,c(1:2,17:19)] #subsets the dataframe to include only necessary columns
+  	df3 <- df2[complete.cases(df2),] #subsets the dataframe to include only 
+	#complete cases, eliminating rows at the end that aren't complete
+  	return(df3)
+	} #peaks.read is a function that will read files from all sub-folders of the
+	#directory named in filepath and combine them into one dataframe
+
+data <- peaks.read(folder) 
+	#using the peaks.read function, this reads in all of the data and puts it 
+	#into a single dataframe while making some modifications to the 
+	#dataframe to make it easier to manipulate. This will take awhile 
+	#since there is a lot of data to be processed.
+
+data$seconds <- as.numeric(row.names(data)) 
+	#creates a column that gives the second that each row was 
+	#recorded from 1 to the end of the dataframe
+
+plot(data$seconds, data$H2O) 
+	#this plot should help you visualize the data so you 
+	#know how to modify or subset it. you will want to subset 
+	#the data to include only the section with the peaks 
+	#you want to analyze.
+
+data2 <- data[data$seconds > (head(data$seconds[data$H2O > 1],1)-30) & 
+                data$seconds < (tail(data$seconds[data$H2O > 1],1)+30),] 
+	#this may be a useful way to subset your data because it starts 
+	#30 seconds before the first peak and ends 30 seconds after 
+	#the last peak. It also creates a copy of data so that if you need 
+	#to go back to the original data you don't have to read it in again 
+
+par(mfrow = c(3, 1))
+plot(data2$seconds, data2$H2O) 
+plot(data2$seconds[1:1000], data2$H2O[1:1000])
+plot(tail(data2$seconds,1000),  tail(data2$H2O,1000))
+	#this plots 3 graphs - all of the data, the first 1000 seconds
+	#and the last 1000 seconds so you can make sure you have subsetted it 
+	#appropriately
+
+data2$seconds = seq(1:nrow(data2)) #resets the seconds column to start at 1
+
+data_051418$h2o_slope <- h2o_slope(data = data_051418, window = 12) 
+	#using the h2o_slope function, this creates a column in the data2 dataframe 
+	#with the slope of h2O v. seconds for a moving window of the given length. 
+	#This will take a very long time (about 10 minutes to process 287 peaks)
+
+cutoff <- 1000
+	#set the slope cutoff you want to use to determine your peaks
+setback <- 50
+	#set the number of values you want to remove from the end of your peak
+peak_length <- 90
+	#set the number of seconds you want to average values for on your peak
+minimum <- 5000 
+	#set the minimum H2O concentration you want to use to determine your peaks
+
+peaks <- data_051418[abs(data_051418$h2o_slope) < cutoff & data_051418$H2O > minimum ,]
+	#subsets the dataframe by your cutoff and minimum values
+end <- c(which(diff(peaks$seconds) >30), nrow(peaks)) 
+	#determines the second at which each peak ends
+last <- peaks$seconds[end]-setback 
+	#creates a vector that will be the ending cutoff second for each peak
+	#including the setback
+first <- last-peak_length
+	#creates a vector that will be the beginning cutoff for each peak
+peaknumber <- numeric(nrow(data_051418)) #empty vector to populate with peak numbers to append to data2
+for (i in 1:length(last)){ 
+    peaknumber[(first[i]):(last[(i)])] = i}
+	#populates peaknumber vector so that it can be appended to data2 to indicate which rows belong to
+	#each peak
+data_051418$peaknumber <- peaknumber
+	#appends peaknumber to data2 as column peaknumber
+
+##visualize the data to ensure you have picked appropriate areas to analyze 
+#using the plots generated below. you may need to change the xlim to accomodate your data. 
+#These plots show only the first 6000 seconds of analysis. This section of code will generate
+#a jpeg of the plotted output in your working directory called peaks.jpg
+
+jpeg("peaks.jpg", height = 2080, width = 2480, units = "px", quality = 100)
+
+par(mfrow = c(3, 1), ps = 24, cex = 1, cex.main = 1)
+
+plot(data_051418$MST, data_051418$H2O, ylim = c(0,35000), 
+xlab = "time", ylab = expression('H'[2]*'O'))
+par(new = T)
+
+plot(data_051418$MST[data_051418$peaknumber>0], data_051418$H2O[data_051418$peaknumber>0], ylim = c(0,35000), col = "red", axes = F, xlab = "", ylab = "", pch = 16)
+
+plot(data_051418$seconds[1:32000], data_051418$Delta_18_16[1:32000], ylim = c(-35,0), xlim = c(0,32000), 
+xlab = "seconds", ylab = "d18O") 
+par(new = T)
+
+plot(data_051418$MST[data_051418$peaknumber>0], data_051418$Delta_18_16[data_051418$peaknumber>0], ylim = c(-35,0), 
+xlim = c(0,32000),col = "red", axes = F, xlab = "", ylab = "")
+
+plot(data_051418$MST, data_051418$Delta_D_H, ylim = c(-250, -80), xlim = c(0, 32000), 
+xlab = "", ylab = "d2H")
+par(new = T)
+
+plot(data_051418$MST[data_051418$peaknumber>0], data_051418$Delta_D_H[data_051418$peaknumber>0], ylim = c(-250, -80), 
+xlim = c(0, 32000), col = "red", axes = F, xlab = "", ylab = "")
+
+final <- aggregate(data_051418[data_051418$peaknumber>0,4:5],list(data_051418$peaknumber[data_051418$peaknumber>0]),mean)
+	#averages the values for each peak
+names(final) <- sub("Group.1$", "Peak", names(final))
+	#changes the name of column 1 in final
+
+write.csv(final,"051418.csv")
+	#writes the final dataframe to a csv in your working directory
+
+
+####Part 2 - calculate slope for h2O v. seconds and pick the peaks####
+
+data_051418$h2o_slope <- h2o_slope(data = data_051418, window = 12) 
+	#using the h2o_slope function, this creates a column in the data2 dataframe 
+	#with the slope of h2O v. seconds for a moving window of the given length. 
+	#This will take a very long time (about 10 minutes to process 287 peaks)
+
+cutoff <- 1000
+	#set the slope cutoff you want to use to determine your peaks
+setback <- 50
+	#set the number of values you want to remove from the end of your peak
+peak_length <- 90
+	#set the number of seconds you want to average values for on your peak
+minimum <- 5000 
+	#set the minimum H2O concentration you want to use to determine your peaks
+
+peaks <- data_051418[abs(data_051418$h2o_slope) < cutoff & data_051418$H2O > minimum ,]
+	#subsets the dataframe by your cutoff and minimum values
+end <- c(which(diff(peaks$seconds) >30), nrow(peaks)) 
+	#determines the second at which each peak ends
+last <- peaks$seconds[end]-setback 
+	#creates a vector that will be the ending cutoff second for each peak
+	#including the setback
+first <- last-peak_length
+	#creates a vector that will be the beginning cutoff for each peak
+peaknumber <- numeric(nrow(data_051418)) #empty vector to populate with peak numbers to append to data2
+for (i in 1:length(last)){ 
+    peaknumber[(first[i]):(last[(i)])] = i}
+	#populates peaknumber vector so that it can be appended to data2 to indicate which rows belong to
+	#each peak
+data_051418$peaknumber <- peaknumber
+	#appends peaknumber to data2 as column peaknumber
+
+##visualize the data to ensure you have picked appropriate areas to analyze 
+#using the plots generated below. you may need to change the xlim to accomodate your data. 
+#These plots show only the first 6000 seconds of analysis. This section of code will generate
+#a jpeg of the plotted output in your working directory called peaks.jpg
+
+jpeg("peaks.jpg", height = 2080, width = 2480, units = "px", quality = 100)
+
+par(mfrow = c(3, 1), ps = 24, cex = 1, cex.main = 1)
+
+plot(data_051418$MST, data_051418$H2O, ylim = c(0,35000), 
+xlab = "time", ylab = expression('H'[2]*'O'))
+par(new = T)
+
+plot(data_051418$MST[data_051418$peaknumber>0], data_051418$H2O[data_051418$peaknumber>0], ylim = c(0,35000), col = "red", axes = F, xlab = "", ylab = "", pch = 16)
+
+plot(data_051418$seconds[1:32000], data_051418$Delta_18_16[1:32000], ylim = c(-35,0), xlim = c(0,32000), 
+xlab = "seconds", ylab = "d18O") 
+par(new = T)
+
+plot(data_051418$MST[data_051418$peaknumber>0], data_051418$Delta_18_16[data_051418$peaknumber>0], ylim = c(-35,0), 
+xlim = c(0,32000),col = "red", axes = F, xlab = "", ylab = "")
+
+plot(data_051418$MST, data_051418$Delta_D_H, ylim = c(-250, -80), xlim = c(0, 32000), 
+xlab = "", ylab = "d2H")
+par(new = T)
+
+plot(data_051418$MST[data_051418$peaknumber>0], data_051418$Delta_D_H[data_051418$peaknumber>0], ylim = c(-250, -80), 
+xlim = c(0, 32000), col = "red", axes = F, xlab = "", ylab = "")
+
+
+
+```
+
+```{r 051418}
+folder2 <- "/Volumes/HAVRANEK18/051418"
+data_051418 <- readRDS("data_051418.RDS")
+data_051418$seconds <- as.numeric(row.names(data_051418)) 
+data_051418$minutes <- as.numeric(data_051418$seconds/60)
+
+
+
+data_051418 <- data_051418 %>% mutate(
+  MST = 
+    paste(data_051418$DATE, data_051418$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+h <- ggplot(data_051418, aes(MST, H2O))+
+  labs(x="Time (MST)")+
+  geom_point()+
+  theme_classic()
+print(h)
+
+# Push Flow at 30 sccm and dilution at 10 sccm # 
+
+T30_10 <- filter(data_051418, MST>"2018-05-14 15:35:00")
+T30_10 <- filter (T30_10, MST<"2018-05-14 15:39:30")
+
+T30_10_plot <-ggplot(T30_10, aes(MST, H2O))+
+  labs(x="Time (MST)", title="Push flow 30 sccm, dilution flow at 10 sccm")+
+  geom_point()+
+  theme_classic()
+
+T30_10_d18O <- ggplot(T30_10, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", title=" Dilution flow at 10 sccm")+
+  geom_point(shape=17, size = 1)+
+  geom_hline(yintercept = -29.7)+ 
+  scale_y_continuous(expand=c(0,0), limits = c(-35, -25))+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 12),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 14, hjust = 0.5))
+
+ggsave("diltuion at 10 sccm.pdf", width=4, height=4, units="in", dpi = 300)
+```
+
+```{r 051518}
+#folder_051518 <- "/Volumes/HAVRANEK18/051518"
+#data_051518 <- peaks.read(folder_051518) 
+#saveRDS(data_051518, "data_051518.RDS")
+data_051518 <- readRDS("data_051518.RDS")
+
+data_051518$seconds <- as.numeric(row.names(data_051518)) 
+data_051518$minutes <- as.numeric(data_051518$seconds/60)
+data_051518 <- data_051518 %>% mutate(
+  MST = 
+    paste(data_051518$DATE, data_051518$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+data_051518 <- filter (data_051518, MST>"2018-05-15 12:00:00")
+data_051518 <- filter (data_051518, MST<"2018-05-15 18:00:00")
+
+
+all_051518 <- ggplot(data_051518, aes(MST, H2O))+
+  labs(x="Time (MST)", title="May 15, 2018")+
+  geom_point()+
+  theme_classic()
+print(all_051518)
+
+# MFC #1 at 30 sccm and MFC#2 at 5 sccm #
+T30_5 <- filter (data_051518, MST>"2018-05-15 14:25:30")
+T30_5 <- filter (T30_5, MST<"2018-05-15 14:40:00")
+
+T30_5_plot <-ggplot(T30_5, aes(MST, H2O))+
+  labs(x="Time (MST)", title="Push flow 30 sccm, dilution flow at 5 sccm")+
+  geom_point()+
+  theme_classic()
+
+T30_5_d18O <- ggplot(T30_5, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", title=" Dilution flow at 5 sccm")+
+  geom_point(shape = 15, size=1)+
+  geom_hline(yintercept = -28.0)+ 
+  scale_y_continuous(expand=c(0,0), limits = c(-35, -25))+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 12),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 14, hjust = 0.5))
+
+ggsave("diltuion at 5 sccm.pdf", width=4, height=4, units="in", dpi = 300)
+
+
+# Push flow at 30 sccm, dilution flow at 0 # 
+T30_0 <- filter(data_051518, MST > "2018-05-15 12:56:30")
+T30_0 <- filter (T30_0, MST < "2018-05-15 13:01:10" )
+
+T30_0_plot <-ggplot(T30_0, aes(MST, H2O))+
+  labs(x="Time (MST)", title="Dilution flow at 0 sccm")+
+  geom_point()+
+  theme_classic()
+
+T30_0_d18O <- ggplot(T30_0, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", title=" Dilution flow at 0 sccm")+
+  geom_point(shape = 18, size = 2)+
+  geom_hline(yintercept = -30.4)+
+  scale_y_continuous(expand=c(0,0), limits = c(-35, -25))+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 12),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 14, hjust = 0.5))
+ggsave("diltuion at 0 sccm.pdf", width=4, height=4, units="in", dpi = 300)
+```
+
+```{r 051618}
+#folder_051618 <- "/Volumes/HAVRANEK18/051618" #filepath to folder that contains the dat files to be analyzed
+#data_051618 <- peaks.read(folder_051618) 
+#saveRDS(data_051618, "data_051618.RDS")
+data_051618 <- readRDS("data_051618.RDS")
+
+data_051618 <- data_051618 %>% mutate(
+  MST = 
+    paste(data_051618$DATE, data_051618$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+data_051618 <- filter (data_051618, MST>"2018-05-16 14:30:00")
+data_051618 <- filter (data_051618, MST<"2018-05-16 20:00:00")
+
+all_051618 <- ggplot(data_051618, aes(MST, H2O))+
+  labs(x="Time (MST)", title="May 16, 2018")+
+  geom_point()+
+  theme_classic()
+
+# Push Fill at 40 sccm and dilution at 5 sccm # 
+T40_5 <- filter(data_051618, MST>"2018-05-16 15:34:00")
+T40_5 <- filter(T40_5, MST< "2018-05-16 15:39:20")
+
+T40_5_plot <-ggplot(T40_5, aes(MST, H2O))+
+  labs(x="Time (MST)", title="Push flow of 40 sccm")+
+  geom_point()+
+  theme_classic()
+
+T40_5_d18O <- ggplot(T40_5, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", title="Push flow of 40 sccm")+
+  geom_point(shape=18, size=2)+
+  geom_hline(yintercept = -30.5)+
+  scale_y_continuous(expand=c(0,0), limits = c(-35, -25))+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 12),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 14, hjust = 0.5))
+
+ggsave("T40_5.pdf",  width=4, height=4, units="in", dpi=300)
+
+
+#Push Fill at 50 sccm and dilution at 5 sccm        
+T50_5 <- filter(data_051618, MST>"2018-05-16 19:16:20")
+T50_5 <- filter(T50_5, MST< "2018-05-16 19:41:00")   
+
+T50_5_plot <-ggplot(T50_5, aes(MST, H2O))+
+  labs(x="Time (MST)", title="Push flow 50 sccm, dilution flow at 5 sccm")+
+  geom_point()+
+  theme_classic()
+
+T50_5_d18O <- ggplot(T50_5, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", title="Push flow 50 sccm")+
+  geom_point(shape=17, size=1)+
+  theme_classic()+
+  geom_hline(yintercept = -30.3)+
+  scale_y_continuous(expand=c(0,0), limits = c(-35, -25))+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 12),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 14, hjust = 0.5))
+
+ggsave("T50_5.pdf", width=4, height=4, units="in", dpi=300)
+```
+
+```{r 051718}
+folder_051718 <- "/Volumes/HAVRANEK18/051718"
+#filepath to folder that contains the dat files to be analyzed
+
+peaks.read <- function(filepath){
+  	files <-  list.files(path=filepath, recursive = T,full.names = T) 
+	#lists the file names in the filepath directory
+  	tables <- lapply(files, read.table,header = T, stringsAsFactors = F) 
+	#reads in the files
+  	df <- do.call("rbind",tables) #combines all the tables into one dataframe
+  	df2 <- df[,c(1:2,17:19)] #subsets the dataframe to include only necessary columns
+  	df3 <- df2[complete.cases(df2),] #subsets the dataframe to include only 
+	#complete cases, eliminating rows at the end that aren't complete
+  	return(df3)
+	} #peaks.read is a function that will read files from all sub-folders of the
+	#directory named in filepath and combine them into one dataframe
+
+#data_051718 <- peaks.read(folder_051718) 
+#saveRDS(data_051718, "data_051718.RDS")
+data_051718 <- readRDS("data_051718.RDS")
+
+data_051718 <- data_051718 %>% mutate(
+  MST = 
+    paste(data_051718$DATE, data_051718$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+data_051718 <- filter(data_051718, MST>"2018-05-17 16:00:00")
+data_051718 <- filter(data_051718, MST<"2018-05-17 18:00:00")
+
+all_051718 <- ggplot(data_051718, aes(MST, H2O))+
+  labs(x="Time (MST)", title="May 17, 2018")+
+  geom_point()+
+  theme_classic()
+print(all_051718)
+
+d18O_0517 <- 
+  ggplot(data_051718, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", title="May 17, 2018")+
+  geom_point()+
+  scale_y_continuous(limits = c(-30, -25))+
+  theme_classic()
+print(d18O_0517)
+
+multiplot(all_051718, d18O_0517)
+```
+
+```{r 051718_late}
+folder_051718_late <- "/Volumes/HAVRANEK18/051718_late"
+#filepath to folder that contains the dat files to be analyzed
+
+peaks.read <- function(filepath){
+  	files <-  list.files(path=filepath, recursive = T,full.names = T) 
+	#lists the file names in the filepath directory
+  	tables <- lapply(files, read.table,header = T, stringsAsFactors = F) 
+	#reads in the files
+  	df <- do.call("rbind",tables) #combines all the tables into one dataframe
+  	df2 <- df[,c(1:2,17:19)] #subsets the dataframe to include only necessary columns
+  	df3 <- df2[complete.cases(df2),] #subsets the dataframe to include only 
+	#complete cases, eliminating rows at the end that aren't complete
+  	return(df3)
+	} #peaks.read is a function that will read files from all sub-folders of the
+	#directory named in filepath and combine them into one dataframe
+
+#data_051718_late <- peaks.read(folder_051718_late) 
+#saveRDS(data_051718_late, "data_051718_late.RDS")
+data_051718_late <- readRDS("data_051718_late.RDS")
+
+
+data_051718_late <- data_051718_late %>% mutate(
+  MST = 
+    paste(data_051718_late$DATE, data_051718_late$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+data_051718_late <- filter(data_051718_late, MST>"2018-05-17 21:00:00")
+#data_051718_late <- filter(data_051718_late, seconds<96133)
+
+all_051718_late <- ggplot(data_051718_late, aes(MST, H2O))+
+  labs(x="Time (MST)", title="May 17 late, 2018")+
+  geom_point()+
+  theme_classic()
+print(all_051718_late)
+
+d18O_late <- ggplot(data_051718_late, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O", title="May 17 late, 2018")+
+  geom_point()+
+  scale_y_continuous(limits = c(-35, -27))+
+  theme_classic()
+
+multiplot(all_051718_late, d18O_late)
+
+```
+
+```{r 05/21/18}
+#folder_052118 <- "/Volumes/HAVRANEK18/052118"
+#data_052118<- peaks.read(folder_052118) 
+#saveRDS(data_052118, "data_052118.RDS")
+data_052118 <- readRDS("data_052118.RDS")
+
+data_052118 <- data_052118 %>% mutate(
+  MST=
+    paste(data_052118$DATE, data_052118$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+all_052118 <- ggplot(data_052118, aes(MST, H2O))+
+  labs(x="Time (MST)", title="May 21, 2018")+
+  geom_point()+
+  theme_classic()
+print(all_052118)
+
+d18O_052118 <- ggplot(data_052118, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O", title="May 21, 2018")+
+  geom_point()+
+  scale_y_continuous(limits = c(-35, -25))+
+  theme_classic()
+print(d18O_052118)
+
+```
+
+```{r first one hour test integration}
+####First one hour test####
+H1_T1<- filter(data_052118, MST>"2018-05-21 17:15:00")
+H1_T1<- filter(H1_T1, MST<"2018-05-21 19:17:00")
+
+H1_T1<- filter(H1_T1, MST>"2018-05-21 19:02:00")
+
+H1_T1_h20 <- ggplot(H1_T1, aes(MST, H2O))+
+  labs(x="Time (MST)", title="First one hour test, 052218")+
+  geom_point()+
+  geom_hline(yintercept = 5000)+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+
+ggsave("H1 water concentration.pdf", width=4, height=4, units="in", dpi=300)
+
+H1_T1_d18 <- ggplot(H1_T1, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O", title="First one our test, 052218")+
+  geom_point()+
+  scale_y_continuous(limits = c(-35, -25))+
+  geom_hline(yintercept = -30)+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+
+ggsave("d18O concentration.pdf", width=4, height=4, units="in", dpi=300)
+
+H1_T1_d2 <- ggplot(H1_T1, aes(MST, Delta_D_H))+
+  labs(x="Time (MST)", y="dD (‰)", title="First one our test, 052218")+
+  geom_point()+
+  scale_y_continuous(limits = c(-210, -195))+
+  geom_hline(yintercept = -194)+
+  geom_hline(yintercept = -201)+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+
+ggsave("dD concentration.pdf", width=4, height=4, units="in", dpi=300)
+
+# MFC1 at 30 sccm, MFC2 at 5 #
+T30_5_2 <- filter(H1_T1, MST>"2018-05-21 19:00")
+T30_5_2_d18O <- ggplot(T30_5_2, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O", title="Push Flow 30 sccm")+
+  geom_point(shape=15, size=1)+
+  scale_y_continuous(expand=c(0,0), limits = c(-35, -25))+
+  geom_hline(yintercept = -30)+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 12),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 14, hjust = 0.5))
+
+ggsave("T30_5.pdf", width=4, height=4, units="in", dpi=300)
+
+
+#I need to solve for the input value for T1 
+H1_T1_fill<-filter(H1_T1, MST<"2018-05-21 17:45:00")
+H1_T1_fill<-filter(H1_T1_fill, MST>"2018-05-21 17:30:00")
+H1_T1_h2O_fill <- ggplot(H1_T1_fill, aes(MST, H2O))+ labs(x="Time (MST)", title="Second one hour test, 052218")+geom_point()
+H1_T1_d18_fill <- ggplot(H1_T1_fill, aes(MST, Delta_18_16))+ labs(x="Time (MST)", title="Second one hour test, 052218")+ geom_point()
+  
+H1_T1_d18O_fill<- mean(H1_T1_fill$Delta_18_16)
+H1_T1_dD_fill<-mean(H1_T1_fill$Delta_D_H)
+H1_T1_d18O_sd <- sd(H1_T1_fill$Delta_18_16)
+H1_T1_dD_sd <- sd(H1_T1_fill$Delta_D_H)
+
+x <- filter (H1_T1, MST >"2018-05-21 19:00:00") # I purposely filtered this way to test my assumptions that the second deriv will show me if I'm at steady state. 
+x$seconds <- as.numeric(row.names(x))
+
+x_plot<-ggplot(x, aes(seconds, H2O))+
+  labs(x="Seconds", y="H2O (ppm)", title="Water concentration vs. time")+
+  geom_point(shape=15, size = 1)+
+  theme_classic()+
+  geom_vline(xintercept = 400)+
+  scale_y_continuous(expand=c(0,0), limits = c(0, 12500))+
+  scale_x_continuous(expand = c(0,0), limits = c(0,1200))+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    legend.text = element_text(size = 12), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+
+ggsave("water concentration.pdf", height = 4, width = 4, units = "in", dpi = 300)
+
+x <- x %>% 
+  mutate(m_11= rollmean(H2O, k=11, fill=NA),
+         m_25=rollmean(H2O, k=25, fill=NA)) %>% 
+  subset(seconds >13 & seconds<(nrow(x)-13)) 
+
+####First Derivative#### 
+x_fd <- as.data.frame(1:(nrow(x)-1))
+
+x_fd <-x_fd %>% 
+  mutate(
+    fd=deriv(x$seconds, x$H2O),
+    fd11=deriv(x$seconds, x$m_11),
+    fd25=deriv(x$seconds, x$m_25)
+  )
+
+colnames(x_fd, do.NULL=FALSE)
+colnames(x_fd)<-c("seconds", "fd", "fd11", "fd25")
+
+fd_plot<-ggplot(x_fd)+
+  geom_point(aes(seconds, fd),colour = "#a6cee3", shape=15, size = 1)+
+  geom_point(aes(seconds, fd11),colour = "#1f78b4", shape=15, size = 1)+
+  geom_point(aes(seconds, fd25), colour = "#33a02c", shape=15, size = 1)+
+  labs(x="Seconds", y="first derivative", title="first derivative")+
+  theme_classic()+geom_vline(xintercept = 400)+
+  scale_y_continuous(expand=c(0,0), limits = c(-100, 400))+
+  scale_x_continuous(expand = c(0,0), limits = c(0,1200))+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    legend.text = element_text(size = 12), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+
+ggsave("first derivative.pdf", height = 4, width = 4, units = "in", dpi = 300)
+
+#Second Derivaive 
+x_sd <- as.data.frame(1:(nrow(x_fd)-1))
+
+x_sd<- x_sd %>% 
+  mutate(
+    sd=deriv(x_fd$seconds, x_fd$fd),
+    sd11=deriv(x_fd$seconds, x_fd$fd11),
+    sd25=deriv(x_fd$seconds, x_fd$fd25)
+  )
+
+colnames(x_sd, do.NULL = FALSE)
+colnames(x_sd)<-c("seconds", "sd", "sd11", "sd25")
+
+H1_sd_plot<-ggplot(x_sd)+
+  geom_point(aes(seconds, sd),colour = "#a6cee3", shape=15, size = 1)+
+  geom_point(aes(seconds, sd11),colour = "#1f78b4", shape=15, size = 1)+
+  geom_point(aes(seconds, sd25), colour = "#33a02c", shape=15, size = 1)+
+  labs(x="Seconds", y="second derivative", title ="second derivative")+
+  theme_classic()+
+  geom_vline(xintercept = 400)+
+  scale_y_continuous(expand=c(0,0), limits = c(-20, 50))+
+  scale_x_continuous(expand = c(0,0), limits = c(0,1200))+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    legend.text = element_text(size = 12), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+
+ggsave("second derivative.pdf", height = 4, width = 4, units = "in", dpi = 300)
+
+
+
+
+
+
+
+
+#With the first and second derivative plots, I think cutting off the first 450 seconds of the piece I've picked is appropriate
+
+x<-filter(x, seconds>400) # this line filters out what I don't want
+
+H1_T1_d18O<-mean(x$Delta_18_16)  # if Cut off all the hiccups at ~650 then I get a value of -29.8. If I cut it off at ~400 seconds and accept the hiccup as noise then I get -30.0. In the first plot, I picked -30 as the isotope value of the input.  
+H1_T1_d18O_2sd <-sd(x$Delta_18_16)
+
+H1_T1_dD<-mean(x$Delta_D_H)
+H1_T1_dD_2sd<-2*sd(x$Delta_D_H)
+
+```
+
+```{r 05/22/18}
+#folder_052218 <- "/Volumes/HAVRANEK18/052218"
+#data_052218<- peaks.read(folder_052218) 
+#saveRDS(data_052218, "data_052218.RDS")
+data_052218 <- readRDS("data_052218.RDS")
+
+data_052218 <- data_052218 %>% mutate(
+  MST=
+    paste(data_052218$DATE, data_052218$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+all_052218 <- ggplot(data_052218, aes(MST, H2O))+
+  labs(x="Time (MST)", title="May 22, 2018")+
+  geom_point()+
+  theme_classic()
+print(all_052218)
+
+d18O_052218 <- ggplot(data_052218, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O", title="May 22, 2018")+
+  geom_point()+
+  scale_y_continuous(limits = c(-35, -25))+
+  theme_classic()
+print(d18O_052218)
+
+#determining the input value for the first overnight test. 
+overnight1_fill <- filter(data_052218,MST>"2018-05-22 19:00:00")
+overnight1_fill <- filter(overnight1_fill,MST<"2018-05-22 19:24:00")
+
+all_overnight1_fill <- ggplot(overnight1_fill, aes(MST, H2O))+
+  labs(x="Time (MST)", title="May 22, 2018 filling for an overnight test")+
+  geom_point()+
+  theme_classic()
+
+d18O_overnight1_fill <- ggplot(overnight1_fill, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O", title="May 22, 2018")+
+  geom_point()+
+  scale_y_continuous(limits = c(-35, -25))+
+  theme_classic()
+
+d18_overnight1 <- mean(overnight1_fill$Delta_18_16)
+d18_overnight1_fill_sd <- 2*sd(overnight1_fill$Delta_18_16)
+dD_overnight1 <- mean(overnight1_fill$Delta_D_H)
+dD_overnight1_fill_sd <- 2*sd(overnight1_fill$Delta_D_H)
+```
+
+```{r second test integration}
+####Second one hour test####
+H1_T2<-filter(data_052218, MST>"2018-05-22 11:00:00")
+H1_T2<-filter(H1_T2, MST<"2018-05-22 12:21:30")
+
+H1_T2<-filter(H1_T2, MST>"2018-05-22 12:10:30")
+
+H1_T2_h20 <- ggplot(H1_T2, aes(MST, H2O))+
+  labs(x="Time (MST)", title="Second one hour test")+
+  geom_point(shape=18)+
+  theme_classic()+
+  scale_y_continuous(expand = c(0,0), limits = c(0,12500))+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+ggsave("H1_T2 water concentration.pdf", width=4, height=4, units="in", dpi=300)
+
+#What value should I place as the horizontal estiamte? 
+H1_T2_fill<-filter(H1_T2, MST<"2018-05-22 11:11:00")
+H1_T2_h2O_fill <- ggplot(H1_T2_fill, aes(MST, H2O))+ labs(x="Time (MST)", title="Second one hour test, 052218")+geom_point()
+
+H1_T2_d18_fill <- ggplot(H1_T2_fill, aes(MST, Delta_18_16))+ labs(x="Time (MST)", title="Second one hour test, 052218")+ geom_point()
+  
+H1_T2_d18O_fill<- mean(H1_T2_fill$Delta_18_16)
+H1_T2_d18O_fill_sd<- 2*sd(H1_T2_fill$Delta_18_16)
+H1_t2_dD_fill <- mean(H1_T2_fill$Delta_D_H)
+H1_t2_dD_fill_sd <- 2*sd(H1_T2_fill$Delta_D_H)
+
+H1_T2_d18 <- ggplot(H1_T2, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O", title="Second one our test, 052218")+
+  geom_point(shape=18)+
+  scale_y_continuous(expand=c(0,0),  limits = c(-35, -25))+
+  geom_hline(yintercept = -28.03)+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+ggsave("H1_T2 d18O.pdf", width=4, height=4, units="in", dpi=300)
+
+H1_T2_d2 <- ggplot(H1_T2, aes(MST, Delta_D_H))+
+  labs(x="Time (MST)", y="dD (‰)", title="Second one our test, 052218")+
+  geom_point(shape=18)+
+  scale_y_continuous(expand=c(0,0), limits = c(-200, -185))+
+  geom_hline(yintercept = -193.8)+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+ggsave("H1_T2 dD.pdf", width=4, height=4, units="in", dpi=300)
+
+
+
+y <- filter (H1_T2, MST >"2018-05-22 12:08:00") # I purposely filtered this way to test my assumptions that the second deriv will show me if I'm at steady state. 
+y$seconds <- as.numeric(row.names(y))
+y_plot<-ggplot(y, aes(MST, H2O))+
+  labs(x="Time (MST)", title="Second one hour test, 052218")+
+  geom_point()+
+  theme_classic()
+
+y <- y %>% 
+  mutate(m_11= rollmean(H2O, k=11, fill=NA),
+         m_25=rollmean(H2O, k=25, fill=NA)) %>% 
+  subset(seconds >13 & seconds<(nrow(y)-13)) 
+
+#First Derivative 
+y_fd <- as.data.frame(1:(nrow(y)-1))
+
+y_fd <-y_fd %>% 
+  mutate(
+    fd=deriv(y$seconds, y$H2O),
+    fd11=deriv(y$seconds, y$m_11),
+    fd25=deriv(y$seconds, y$m_25)
+  )
+
+colnames(y_fd, do.NULL=FALSE)
+colnames(y_fd)<-c("seconds", "fd", "fd11", "fd25")
+
+fd_plot<-ggplot(y_fd)+
+  geom_point(aes(seconds, fd),colour = "green")+
+  geom_point(aes(seconds, fd11),colour = "blue")+
+  geom_point(aes(seconds, fd25), colour = "red")+
+  labs(x="Seconds", title="first derivative of second one hour test")+
+  theme_classic()
+
+
+#Second Derivaive 
+y_sd <- as.data.frame(1:(nrow(y_fd)-1))
+
+y_sd<- y_sd %>% 
+  mutate(
+    sd=deriv(y_fd$seconds, y_fd$fd),
+    sd11=deriv(y_fd$seconds, y_fd$fd11),
+    sd25=deriv(y_fd$seconds, y_fd$fd25)
+  )
+
+colnames(y_sd, do.NULL = FALSE)
+colnames(y_sd)<-c("seconds", "sd", "sd11", "sd25")
+
+sd_plot<-ggplot(y_sd)+
+  geom_point(aes(seconds, sd),colour = "green")+
+  geom_point(aes(seconds, sd11),colour = "blue")+
+  geom_point(aes(seconds, sd25), colour = "black")+
+  #scale_y_continuous(limits = c(-10, 10))+
+  labs(x="Seconds", title="second derivative")+
+  theme_classic()
+
+#With the first and second derivative plots, I think cutting off the first 450 seconds of the piece I've picked is appropriate
+
+y<-filter(y, seconds>450) # this line filters out what I don't want
+
+H1_T2_d18O<-mean(y$Delta_18_16) #This yields a value of -28.3. From the plot above (H1_T2_d18O) I picked an average value of -28.1, so I'm well within error of the Picarro. 
+H1_T2_d18O_sd<-2*sd(y$Delta_18_16)
+H1_T2_dD<-mean(y$Delta_D_H) 
+H1_T2_dD_sd<-2*sd(y$Delta_D_H)
+```
+
+```{r third one hour test integration}
+####Plotting raw data, and determintation of the fill value#### 
+H1_T3 <- filter(data_052218, MST>"2018-05-22 14:00:00")
+H1_T3 <- filter(H1_T3, MST<"2018-05-22 15:39:45")
+
+#H1_T3 <- filter(H1_T3, MST>"2018-05-22 15:25:00")
+
+H1_T3_h20 <- ggplot(H1_T3, aes(MST, H2O))+
+  labs(x="Time (MST)", title="Third one hour test, 052218")+
+  geom_point(shape=17, size=1)+
+  theme_classic()+
+  scale_y_continuous(expand = c(0,0), limits = c(0,15000))+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    axis.text.x = element_text(size=14),
+    axis.text.y = element_text(size = 14),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+
+ggsave("H1_T3 water concentration.pdf", width=4, height=4, units="in", dpi=300)
+
+#Fill parameters
+H1_T3_fill<- filter(H1_T3, MST>"2018-05-22 14:17:00")
+H1_T3_fill<- filter(H1_T3_fill, MST<"2018-05-22 14:27:30")
+H1_T3_h2O_fill <- ggplot(H1_T3_fill, aes(MST, H2O))+ labs(x="Time (MST)", title="Second one hour test, 052218")+geom_point()
+H1_T3_d18_fill <- ggplot(H1_T3_fill, aes(MST, Delta_18_16))+ labs(x="Time (MST)", title="Second one hour test, 052218")+ geom_point()
+H1_T3_fill_d18O<- mean(H1_T3_fill$Delta_18_16)
+H1_T3_fill_d18O_sd<- 2*sd(H1_T3_fill$Delta_18_16)
+H1_T3_fill_dD<- mean(H1_T3_fill$Delta_D_H)
+H1_T3_fill_dD_sd<- 2*sd(H1_T3_fill$Delta_D_H)
+
+H1_T3_d18 <- ggplot(H1_T3, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O (‰)", title="Third one our test, 052218")+
+  geom_point(shape=17, size=1)+
+  scale_y_continuous(expand=c(0,0), limits = c(-35, -25))+
+  geom_hline(yintercept = -30.3)+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    axis.text.x = element_text(size=14),
+    axis.text.y = element_text(size = 14),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+
+ggsave("H1_T3 d18O.pdf", width=4, height=4, units="in", dpi=300)
+
+H1_T3_d2 <- ggplot(H1_T3, aes(MST, Delta_D_H))+
+  labs(x="Time (MST)", y="dD (‰)", title="Third one our test, 052218")+
+  geom_point(shape=17, size=1)+
+  scale_y_continuous(expand=c(0,0), limits = c(-201, -191))+
+  geom_hline(yintercept = -199.42)+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    axis.text.x = element_text(size=14),
+    axis.text.y = element_text(size = 14),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+
+ggsave("H1_T3 dD.pdf", width=4, height=4, units="in", dpi=300)
+
+####Derivatives####
+z<- filter (H1_T3, MST >"2018-05-22 15:29:00") #Just the test 
+
+#plot to make sure I'm looking at the right spot 
+z_plot<-ggplot(z, aes(MST, H2O))+
+  labs(x="Time (MST)", title="Third one hour test, 052218")+
+  geom_point()+
+  theme_classic()
+
+#dummy column that I can use to do my derivative 
+z$seconds<-as.numeric(row.names(z)) 
+
+#derivative function 
+deriv <- function(x, y) {
+  diffvar <- diff(y) / diff(x)
+}
+
+#get rolling mean in groups of 11 and 25, and remove the data that doesn't have a rolling mean 
+z <- z %>% 
+  mutate(m_11= rollmean(H2O, k=11, fill=NA),
+         m_25=rollmean(H2O, k=25, fill=NA)) %>% 
+  subset(seconds >13 & seconds<737) 
+
+#create a data frame for the derivatives. I chose to do it this way because the derivs df is 1 less than the original df 
+derivs <- as.data.frame(1:(nrow(z)-1)) #length(z)-1
+
+#This puts the first derivative of the raw data, moving 11 point average and moving 25 point average into its own data frame 
+derivs <- derivs %>% 
+  mutate(
+    fd=deriv(z$seconds, z$H2O),
+    fd11=deriv(z$seconds, z$m_11),
+    fd25=deriv(z$seconds, z$m_25)
+  )
+
+colnames(derivs, do.NULL = FALSE)
+colnames(derivs)<-c("seconds", "fd", "fd11", "fd25")
+
+#plot the derivs to see what they say! 
+move_plot<-ggplot(derivs)+
+  geom_point(aes(seconds, fd),colour = "green")+
+  geom_point(aes(seconds, fd11),colour = "blue")+
+  geom_point(aes(seconds, fd25), colour = "red")+
+  labs(x="Seconds", title="first derivative")+
+  theme_classic()
+
+
+
+# getting a second derivative to prove I am at steady state
+sec_deriv <- as.data.frame(1:(nrow(derivs)-1))
+
+sec_deriv <- sec_deriv %>% 
+  mutate(
+    sd=deriv(derivs$seconds, derivs$fd),
+    sd11=deriv(derivs$seconds, derivs$fd11),
+    sd25=deriv(derivs$seconds, derivs$fd25)
+  )
+
+colnames(sec_deriv, do.NULL = FALSE)
+colnames(sec_deriv)<-c("seconds", "sd", "sd11", "sd25")
+
+sd_plot<-ggplot(sec_deriv)+
+  geom_point(aes(seconds, sd),colour = "green")+
+  geom_point(aes(seconds, sd11),colour = "blue")+
+  geom_point(aes(seconds, sd25), colour = "red")+
+  scale_y_continuous(limits = c(-.5, .5))+
+  labs(x="Seconds", title="second derivative")+
+  theme_classic()
+# This is great. I think that through this plot I convinced myself I really was at steady state. 
+
+multiplot(move_plot, sd_plot)
+
+#mean(sec_deriv$sd) = -.0088
+#mean(sec_deriv$sd11) =  -0.007498478
+# mean(sec_deriv$sd25) =  -0.007283236
+
+
+
+
+#From the first derivative, I should definitely exclude the first ~130 seconds seconds 
+z<-filter(z, seconds>145) #threw out an extra 15 seconds just cause 
+finald18<-mean(z$Delta_18_16) #If I use the average of the time during which the bottle was at steady state, then the d18O=-30.3 -- THIS MATCHES THE INPUT VALUE!
+
+z<-filter(z, seconds>130) # this line filters out what I don't want
+
+H1_T3_d18O<-mean(z$Delta_18_16) 
+H1_T3_d18O_sd<-2*sd(z$Delta_18_16)
+H1_T3_dD<-mean(z$Delta_D_H) 
+H1_T3_dD_sd<-2*sd(z$Delta_D_H) 
+```
+
+```{r 052318}
+### this was a night where I filled the bottle for an overnight test, but the next mornign I messed up the MFCs so it didn't work ### 
+
+#folder_052318 <- "/Volumes/HAVRANEK18/052318"
+#data_052318<- peaks.read(folder_052318) 
+#saveRDS(data_052318, "data_052318.RDS")
+data_052318 <- readRDS("data_052318.RDS")
+
+data_052318 <- data_052318 %>% mutate(
+  MST=
+    paste(data_052318$DATE, data_052318$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+data_052318$seconds <- as.numeric(row.names(data_052318)) 
+
+#data_052318 <- filter(data_052318, MST>"2018-05-23 16:00:00")
+
+#Filter out data to pull out the overnight test the I extracted in the am 
+data_052318 <- filter (data_052318, MST>"2018-05-23 10:00:00")
+data_052318 <- filter(data_052318, MST<"2018-05-23 10:15:00")
+
+all_052318 <- ggplot(data_052318, aes(MST, H2O))+
+  labs(x="Time (MST)", title="May 23, 2018")+
+  geom_point()+
+  theme_classic()
+
+d18O_052318 <- ggplot(data_052318, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O", title="First overnight test")+
+  geom_hline(yintercept = -30.46)+
+  geom_point()+
+  scale_y_continuous(limits = c(-35, -25))+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    axis.text.x = element_text(size=14),
+    axis.text.y = element_text(size = 14),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+
+####Derivatives####
+#plot to make sure I'm looking at the right spot 
+out0523_plot<-ggplot(data_052318, aes(MST, H2O))+
+  labs(x="Time (MST)", title="Third one hour test, 052218")+
+  geom_point()+
+  theme_classic()
+
+#dummy column that I can use to do my derivative 
+data_052318$seconds<-as.numeric(row.names(data_052318)) 
+
+#get rolling mean in groups of 11 and 25, and remove the data that doesn't have a rolling mean 
+data_052318 <- data_052318 %>% 
+  mutate(m_11= rollmean(H2O, k=11, fill=NA),
+         m_25=rollmean(H2O, k=25, fill=NA)) %>% 
+  subset(seconds >13 & seconds<1033) 
+
+#create a data frame for the derivatives. I chose to do it this way because the derivs df is 1 less than the original df 
+out0523_derivs <- as.data.frame(1:(nrow(data_052318)-1)) #length(z)-1
+
+#This puts the first derivative of the raw data, moving 11 point average and moving 25 point average into its own data frame 
+out0523_derivs <- out0523_derivs %>% 
+  mutate(
+    fd=deriv(data_052318$seconds, data_052318$H2O),
+    fd11=deriv(data_052318$seconds, data_052318$m_11),
+    fd25=deriv(data_052318$seconds, data_052318$m_25)
+  )
+
+colnames(out0523_derivs, do.NULL = FALSE)
+colnames(out0523_derivs)<-c("seconds", "fd", "fd11", "fd25")
+
+#plot the derivs to see what they say! 
+out0523_derivs_plot<-ggplot(out0523_derivs)+
+  geom_point(aes(seconds, fd),colour = "green")+
+  geom_point(aes(seconds, fd11),colour = "blue")+
+  geom_point(aes(seconds, fd25), colour = "red")+
+  labs(x="Seconds", title="first derivative")+
+  theme_classic()
+
+#from the first derivative I think excluding the first 200 seconds would be good 
+
+# getting a second derivative to prove I am at steady state
+out0523_sec_deriv <- as.data.frame(1:(nrow(out0523_derivs)-1))
+
+out0523_sec_deriv <- out0523_sec_deriv %>% 
+  mutate(
+    sd=deriv(out0523_derivs$seconds, out0523_derivs$fd),
+    sd11=deriv(out0523_derivs$seconds, out0523_derivs$fd11),
+    sd25=deriv(out0523_derivs$seconds, out0523_derivs$fd25)
+  )
+
+colnames(out0523_sec_deriv, do.NULL = FALSE)
+colnames(out0523_sec_deriv)<-c("seconds", "sd", "sd11", "sd25")
+
+out0523_sd_plot<-ggplot(out0523_sec_deriv)+
+  geom_point(aes(seconds, sd),colour = "green")+
+  geom_point(aes(seconds, sd11),colour = "blue")+
+  geom_point(aes(seconds, sd25), colour = "red")+
+  #scale_y_continuous(limits = c(-.5, .5))+
+  labs(x="Seconds", title="second derivative")+
+  theme_classic()
+
+
+
+#With the first and second derivative plots, I think cutting off the first 200 seconds of the piece I've picked is appropriate
+
+data_052318<-filter(data_052318, seconds>200) 
+H15_T2_d18O<-mean(data_052318$Delta_18_16)  
+H15_T2_d18O_sd<-2*sd(data_052318$Delta_18_16) 
+H15_T2_dD<-mean(data_052318$Delta_D_H) 
+H15_T2_dD_sd<-2*sd(data_052318$Delta_D_H)
+
+d18O_052318 <- ggplot(data_052318, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O", title="Second overnight test")+
+  geom_hline(yintercept = -30.29)+
+  geom_point(shape=15)+
+  scale_y_continuous(limits = c(-35, -25))+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    axis.text.x = element_text(size=14),
+    axis.text.y = element_text(size = 14),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+
+ggsave("Second overnight test.pdf", width = 4, height = 4, units = "in", dpi=300)
+```
+
+```{r 052518}
+### this includes the data from filling the bottle on the evening of 05/24/18 ###
+
+#folder_052518 <- "/Volumes/HAVRANEK18/052518"
+#data_052518<- peaks.read(folder_052518) 
+#saveRDS(data_052518, "data_052518.RDS")
+data_052518 <- readRDS("data_052518.RDS")
+
+data_052518 <- data_052518 %>% mutate(
+  MST=
+    paste(data_052518$DATE, data_052518$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+data_052518$seconds <- as.numeric(row.names(data_052518)) 
+
+#plot input values
+data_052418 <- filter(data_052518, MST>"2018-05-24 18:30:00")
+data_052418 <- filter(data_052418, MST<"2018-05-24 19:15:00")
+
+all_052418 <- ggplot(data_052418, aes(MST, H2O))+
+  labs(x="Time (MST)", title="May 24, 2018 -- Filling ")+
+  geom_point()+
+  theme_classic()
+
+d18_052418 <- ggplot(data_052418, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", title="May 24, 2018 -- Filling")+
+  geom_point()+
+  scale_y_continuous(limits = c(-31.5, -29.5))+
+  theme_classic()
+
+#Calculate the input values 
+fill_0524 <- filter(data_052418, MST>"2018-05-24 18:45:00" )
+fill_0524<- filter(fill_0524, MST<"2018-05-24 19:00:00")
+
+d18_fill_0524 <- mean(fill_0524$Delta_18_16)
+d18_fill_0524_sd <- 2*sd(fill_0524$Delta_18_16)
+dD_fill_0524 <- mean(fill_0524$Delta_D_H)
+dD_fill_0524 <- 2*sd(fill_0524$Delta_D_H)
+
+####What's coming out of the bottle?####
+data_052518 <- filter(data_052518, MST>"2018-05-25 10:00:00")
+data_052518 <- filter(data_052518, MST<"2018-05-25 11:30:00")
+
+all_052518 <- ggplot(data_052518, aes(MST, H2O))+
+  labs(x="Time (MST)", title="May 25, 2018")+
+  geom_point()+
+  theme_classic()
+
+d18O_052518 <- ggplot(data_052518, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O", title="May 25, 2018")+
+  geom_point()+
+  scale_y_continuous(limits = c(-35, -25))+
+  theme_classic()
+
+####Derivatives####
+out0525<- filter (data_052518, MST >"2018-05-25 10:41:00") #Just the test 
+out0525<- filter (out0525, MST <"2018-05-25 11:20:00") 
+
+out0525$seconds <- as.numeric(row.names(out0525)) 
+
+#plot to make sure I'm looking at the right spot 
+out0525_plot<-ggplot(out0525, aes(MST, H2O))+
+  labs(x="Time (MST)", title="First  Overnight test")+
+  geom_point()+
+  theme_classic()
+
+#get rolling mean in groups of 11 and 25, and remove the data that doesn't have a rolling mean 
+out0525 <- out0525 %>% 
+  mutate(m_11= rollmean(H2O, k=11, fill=NA),
+         m_25=rollmean(H2O, k=25, fill=NA)) %>% 
+  subset(seconds >13 & seconds<737) 
+
+#create a data frame for the derivatives. I chose to do it this way because the derivs df is 1 less than the original df 
+derivs <- as.data.frame(1:(nrow(out0525)-1)) #length(z)-1
+
+#This puts the first derivative of the raw data, moving 11 point average and moving 25 point average into its own data frame 
+derivs <- derivs %>% 
+  mutate(
+    fd=deriv(out0525$seconds, out0525$H2O),
+    fd11=deriv(out0525$seconds, out0525$m_11),
+    fd25=deriv(out0525$seconds, out0525$m_25)
+  )
+
+colnames(derivs, do.NULL = FALSE)
+colnames(derivs)<-c("seconds", "fd", "fd11", "fd25")
+
+#plot the derivs to see what they say! 
+move_plot<-ggplot(derivs)+
+  geom_point(aes(seconds, fd),colour = "green")+
+  geom_point(aes(seconds, fd11),colour = "blue")+
+  geom_point(aes(seconds, fd25), colour = "red")+
+  labs(x="Seconds", title="first derivative")+
+  theme_classic()
+
+# getting a second derivative to prove I am at steady state
+sec_deriv <- as.data.frame(1:(nrow(derivs)-1))
+
+sec_deriv <- sec_deriv %>% 
+  mutate(
+    sd=deriv(derivs$seconds, derivs$fd),
+    sd11=deriv(derivs$seconds, derivs$fd11),
+    sd25=deriv(derivs$seconds, derivs$fd25)
+  )
+
+colnames(sec_deriv, do.NULL = FALSE)
+colnames(sec_deriv)<-c("seconds", "sd", "sd11", "sd25")
+
+sd_plot<-ggplot(sec_deriv)+
+  geom_point(aes(seconds, sd),colour = "green")+
+  geom_point(aes(seconds, sd11),colour = "blue")+
+  geom_point(aes(seconds, sd25), colour = "red")+
+  #scale_y_continuous(limits = c(, .5))+
+  labs(x="Seconds", title="second derivative")+
+  theme_classic()
+
+#From the first derivative, I should definitely exclude the first ~130 seconds seconds 
+out0525<-filter(out0525, seconds>230) #threw out an extra 15 seconds just cause 
+H15_T1_d18O<-mean(out0525$Delta_18_16)
+H15_T1_d18O_sd<-2*sd(out0525$Delta_18_16)
+H15_T1_dD<-mean(out0525$Delta_D_H) 
+
+H15_T1_d18O <- ggplot(out0525, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O", title="First overnight test")+
+  geom_hline(yintercept = -30.46)+
+  geom_point(shape=15, size =1)+
+  scale_y_continuous(limits = c(-35, -25))+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    axis.text.x = element_text(size=14),
+    axis.text.y = element_text(size = 14),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+ggsave("first overnight test.pdf", width=4, height=4, units="in", dpi=300) 
+```
+
+```{r 052718}
+folder_052718 <- "/Volumes/HAVRANEK18/052718"
+data_052718<- peaks.read(folder_052718) 
+saveRDS(data_052718, "data_052718.RDS")
+#data_052718 <- readRDS("data_052718.RDS")
+
+data_052718 <- data_052718 %>% mutate(
+  MST=
+    paste(data_052718$DATE, data_052718$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+data_052718$seconds <- as.numeric(row.names(data_052718)) 
+
+data_052718 <- filter(data_052718, MST>"2018-05-27 12:00:00")
+#data_052718 <- filter(data_052718, MST<"2018-05-25 11:30:00")
+
+all_052718 <- ggplot(data_052718, aes(MST, H2O))+
+  labs(x="Time (MST)", title="May 27, 2018")+
+  geom_point()+
+  theme_classic()
+print(all_052718)
+
+d18O_052718 <- ggplot(data_052718, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O", title="May 27, 2018")+
+  geom_point()+
+  scale_y_continuous(limits = c(-35, -25))+
+  theme_classic()
+print(d18O_052718)
+
+multiplot(all_052718, d18O_052718)
+```
+
+```{r 060718}
+#folder_060718 <- "/Volumes/HAVRANEK18/060718"
+#data_060718<- peaks.read(folder_060718) 
+#saveRDS(data_060718, "data_060718.RDS")
+data_060718 <- readRDS("data_060718.RDS")
+
+data_060718 <- data_060718 %>% mutate(
+  MST=
+    paste(data_060718$DATE, data_060718$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+data_060718$seconds <- as.numeric(row.names(data_060718)) 
+
+data_060718 <- filter(data_060718, MST>"2018-06-07 17:00:00")
+data_060718 <- filter(data_060718, MST<"2018-06-07 18:00:00")
+
+all_060718 <- ggplot(data_060718, aes(MST, H2O))+
+  labs(x="Time (MST)", title="June 7, 2018")+
+  geom_point()+
+  theme_classic()
+print(all_060718)
+
+d18O_060718 <- ggplot(data_060718, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O", title="June 7, 2018")+
+  geom_point()+
+  scale_y_continuous(limits = c(-35, -25))+
+  geom_hline(yintercept = -30.3)+
+  theme_classic()
+print(d18O_060718)
+
+#What value was the bottle filled with? 
+fill_0607 <- filter(data_060718, MST<"2018-06-07 17:13:00")
+fill_0607 <- filter(fill_0607, MST>"2018-06-07 17:10:00")
+
+fill_0607_plot <- ggplot(fill_0607, aes(MST, H2O))+
+  labs(x="Time (MST)", title="June 7, 2018")+
+  geom_point()+
+  theme_classic()
+
+fill_0607_d18 <- ggplot(fill_0607, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", title="June 7, 2018")+
+  geom_point()+
+  theme_classic()
+
+W1_t1_18 <- mean(fill_0607$Delta_18_16)
+W1_t1_18_sd <- 2*sd(fill_0607$Delta_18_16)
+W1_t1_D <- mean(fill_0607$Delta_D_H)
+W1_t1_D_sd <- 2*sd(fill_0607$Delta_D_H)
+
+
+#What value came out of the bottle?
+out_0607 <- filter(data_060718, MST>"2018-06-07 17:45:00")
+
+####Derivatives####
+
+
+#dummy column that I can use to do my derivative 
+out_0607$seconds<-as.numeric(row.names(out_0607)) 
+
+#get rolling mean in groups of 11 and 25, and remove the data that doesn't have a rolling mean 
+out_0607 <- out_0607 %>% 
+  mutate(m_11= rollmean(H2O, k=11, fill=NA),
+         m_25=rollmean(H2O, k=25, fill=NA)) %>% 
+  subset(seconds >13 & seconds<1033) 
+
+#create a data frame for the derivatives. I chose to do it this way because the derivs df is 1 less than the original df 
+out_0607_derivs <- as.data.frame(1:(nrow(out_0607)-1)) #length(z)-1
+
+#This puts the first derivative of the raw data, moving 11 point average and moving 25 point average into its own data frame 
+out_0607_derivs <- out_0607_derivs %>% 
+  mutate(
+    fd=deriv(out_0607$seconds, out_0607$H2O),
+    fd11=deriv(out_0607$seconds, out_0607$m_11),
+    fd25=deriv(out_0607$seconds, out_0607$m_25)
+  )
+
+colnames(out_0607_derivs, do.NULL = FALSE)
+colnames(out_0607_derivs)<-c("seconds", "fd", "fd11", "fd25")
+
+#plot the derivs to see what they say! 
+out_0607_derivs_plot<-ggplot(out_0607_derivs)+
+  geom_point(aes(seconds, fd),colour = "green")+
+  geom_point(aes(seconds, fd11),colour = "blue")+
+  geom_point(aes(seconds, fd25), colour = "red")+
+  labs(x="Seconds", title="first derivative")+
+  theme_classic()
+
+#from the first derivative I think excluding the first 200 seconds would be good 
+
+# getting a second derivative to prove I am at steady state
+out_0607_sec_deriv <- as.data.frame(1:(nrow(out_0607_derivs)-1))
+
+out_0607_sec_deriv <- out_0607_sec_deriv %>% 
+  mutate(
+    sd=deriv(out_0607_derivs$seconds, out_0607_derivs$fd),
+    sd11=deriv(out_0607_derivs$seconds, out_0607_derivs$fd11),
+    sd25=deriv(out_0607_derivs$seconds, out_0607_derivs$fd25)
+  )
+
+colnames(out_0607_sec_deriv, do.NULL = FALSE)
+colnames(out_0607_sec_deriv)<-c("seconds", "sd", "sd11", "sd25")
+
+out_0607_sd_plot<-ggplot(out_0607_sec_deriv)+
+  geom_point(aes(seconds, sd),colour = "green")+
+  geom_point(aes(seconds, sd11),colour = "blue")+
+  geom_point(aes(seconds, sd25), colour = "red")+
+  #scale_y_continuous(limits = c(-.5, .5))+
+  labs(x="Seconds", title="second derivative")+
+  theme_classic()
+
+#Based on this plot I'd like to exclude the first 350 seconds 
+out_0607<-filter(out_0607, seconds>350) 
+W1_T1_d18O_out<-mean(out_0607$Delta_18_16)  
+W1_T1_d18O_sd<-2*sd(out_0607$Delta_18_16)
+W1_T1_dD_out<-mean(out_0607$Delta_D_H)
+
+
+overnight_d18O <- ggplot(out_0607, aes(MST, Delta_18_16))+
+  labs(x="Time (MST)", y="d18O", title="One Week Test")+
+  geom_hline(yintercept = -30.34)+
+  geom_point(shape=15, size =1)+
+  scale_y_continuous(limits = c(-35, -25))+
+  theme_classic()+
+  theme(
+    panel.border=element_rect(fill=NA,size = 1),
+    text = element_text(size = 14),
+    axis.text.x = element_text(size=14),
+    axis.text.y = element_text(size = 14),
+    legend.text = element_text(size = 10), 
+    axis.text = element_text(color = "black")) +
+    guides(linetype = guide_legend(label.hjust = 0, label.vjust = 0.5, keyheight = 2))+
+    theme(plot.title = element_text(size = 18, hjust = 0.5))
+ggsave("one week test.pdf", width=4, height=4, units="in", dpi=300)
+
+
+```
+
+

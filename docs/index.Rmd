@@ -1,0 +1,25 @@
+---
+title: "Available documents"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+knitr::opts_knit$set(root.dir = "..")
+```
+
+
+```{r, results='asis', echo=FALSE}
+data_frame(
+  filepath = list.files("docs", recursive = TRUE, all.files = TRUE, pattern = "*\\.html$"),
+  folder = dirname(filepath),
+  filename = basename(filepath)
+) %>% 
+  filter(!filepath %in% c("index.html", "index.Rmd")) %>% 
+  nest(-folder) %>% 
+  with(walk2(folder, data, function(folder, data) {
+    cat("\n\n##", folder, "\n")
+    cat(paste0("\n - [", data$filename, "](", data$filepath, ")"))
+  }))
+```
+
