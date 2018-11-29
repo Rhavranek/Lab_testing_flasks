@@ -4,10 +4,9 @@ author: "Rachel Havranek"
 date: "11/12/2018"
 output: html_document
 ---
-
 ## Load Libraries and functions 
 ```{r import libraries and functions, message=FALSE}
-setwd("/Volumes/HAVRANEK18")  
+#setwd("/Volumes/HAVRANEK18/Lab_testing_flasks")  
 library(ggplot2)
 library (plotly)
 library (lubridate)
@@ -58,19 +57,19 @@ h2o_slope <- function(data,window){
 } #h2o_slope will calculate the slope of h2o vs. experiment second in a moving window  
 ```
 
-## Load Data
+## Load Data 
 ```{r}
 # folder_110418 <- "/Volumes/HAVRANEK18/110418"
 # data_110418 <- peaks.read(folder_110418) 
 # saveRDS(data_110418, "data_110418.RDS")
-data_110418 <- readRDS("data_110418.RDS")
+data_110418 <- readRDS("/Volumes/HAVRANEK18/Lab_testing_flasks/data/data_110418.RDS")
 
 # I did a lot of work between 5 - 10 pm so I need to bring in the data from the fifth b/c the picarro uses GMT time 
 
 # folder_110518 <- "/Volumes/HAVRANEK18/110518"
 # data_110518 <- peaks.read(folder_110518) 
 # saveRDS(data_110518, "data_110518.RDS")
-data_110518 <- readRDS("data_110518.RDS")
+data_110518 <- readRDS("/Volumes/HAVRANEK18/Lab_testing_flasks/data/data_110518.RDS")
 ```
 
 ## 1. Use Lubridate to match Picarro time with lab Notes
@@ -126,7 +125,7 @@ label5 <- grobTree(textGrob("Jumper", x=0.9,  y=0.95, hjust=0,
   gp=gpar(col="red", fontsize=13, fontface="italic")))
 
 fill_concen_110418 <- ggplot(fill_110418, aes(MST, H2O))+
-  labs(x="Time (MST)", title="November 03, 2018")+
+  labs(x="Time (MST)", title="November 04, 2018")+
   geom_point()+
   theme_classic()+
   annotation_custom(label1)+
@@ -141,8 +140,23 @@ print(fill_concen_110418)
 
 ## Fill flasks with water vapor, and reduce the input values 
 ```{r}
+first_stand <- filter (data_110418, MST > "2018-11-04 16:45:00" & MST < "2018-11-04 16:55:00" )
+df1_1 <- data.frame(
+  "Time averaged" = 10,
+  "Type" = "Correction",
+  "valco_position" = 1,
+  "mean_d18O" = mean (first_stand$Delta_18_16),
+  "sd_d18O" = sd (first_stand$Delta_18_16),
+  "mean_dD" = mean(first_stand$Delta_D_H),
+  "sd_dD" = sd(first_stand$Delta_D_H),
+  
+  stringsAsFactors = FALSE
+)
+
 fill_16_110418 <- filter(evening_110418, MST > "2018-11-04 17:27:00" & MST < "2018-11-04 17:37:00")
 df16 <- data.frame(
+  "Time averaged" = 10,
+  "Type" = "Fill",
   "valco_position" = 16,
   "mean_d18O" = mean (fill_16_110418$Delta_18_16),
   "sd_d18O" = sd (fill_16_110418$Delta_18_16),
@@ -153,6 +167,8 @@ df16 <- data.frame(
 
 fill_15_110418 <- filter (evening_110418, MST > "2018-11-04 18:08:00" & MST < "2018-11-04 18:18:00")
 df15 <- data.frame(
+  "Time averaged" = 10,
+  "Type" = "Fill",
   "valco_position" = 15,
   "mean_d18O" = mean (fill_15_110418$Delta_18_16),
   "sd_d18O" = sd (fill_15_110418$Delta_18_16),
@@ -163,6 +179,8 @@ df15 <- data.frame(
 
 fill_14_110418 <- filter (evening_110418, MST > "2018-11-04 18:48:00" & MST < "2018-11-04 18:58:00")
 df14 <- data.frame(
+  "Time averaged" = 10 ,
+  "Type" = "Fill",
   "valco_position" = 14,
   "mean_d18O" = mean (fill_14_110418$Delta_18_16),
   "sd_d18O" = sd (fill_14_110418$Delta_18_16),
@@ -173,6 +191,8 @@ df14 <- data.frame(
 
 fill_2_110418 <- filter (evening_110418, MST > "2018-11-04 19:37:00" & MST < "2018-11-04 19:47:00")
 df2 <- data.frame(
+  "Time averaged" = 10,
+  "Type" = "Fill",
   "valco_position" = 2,
   "mean_d18O" = mean (fill_2_110418$Delta_18_16),
   "sd_d18O" = sd (fill_2_110418$Delta_18_16),
@@ -183,6 +203,8 @@ df2 <- data.frame(
 
 fill_jumper_110418 <- filter (evening_110418, MST > "2018-11-04 19:50:00" & MST < "2018-11-04 19:59:00")
 df1 <- data.frame(
+  "Time averaged" = 10,
+  "Type" = "Fill",
   "valco_position" = 1,
   "mean_d18O" = mean (fill_jumper_110418$Delta_18_16),
   "sd_d18O" = sd (fill_jumper_110418$Delta_18_16),
@@ -191,7 +213,7 @@ df1 <- data.frame(
   stringsAsFactors = FALSE
 )
 
-fill_110418_summary <-  bind_rows(df16, df15, df14, df2, df1)
+fill_110418_summary <-  bind_rows(df1_1, df16, df15, df14, df2, df1)
 ```
 
 ##  Pull out results data and add in time averaging 
@@ -325,11 +347,42 @@ R1_df<- data.frame(
 results_110418_summary <- bind_rows(R16_df, R15_df, R14_df, R2_df, R1_df)
 ```
 
-## Bind together input and results, write to csv 
+## Bind together input and results 
+** Here I need to change this so that it saves to the data_output folders ** 
 ```{r}
 Summary_110418 <- bind_rows(fill_110418_summary, results_110418_summary)
 print(Summary_110418)
-#write.csv(Summary_110418, "November 04, 2018 Summary table.csv")
+
+Summary_110418 <- Summary_110418 %>% mutate(
+  analysis = as.numeric(row.names(Summary_110418))
+)
 ```
+
+# Now that I have a summary of my raw data I can move onto corrections
+## Drift Correction
+```{r}
+standards <- filter(Summary_110418, valco_position==1)
+standards <- standards %>% mutate(
+  diff_d18O = mean_d18O - -25.0,
+  diff_dD = mean_dD - -185.0
+)
+
+lm.d18O <- lm (data = standards, formula = diff_d18O ~ analysis)
+print(lm.d18O)
+
+lm.dD <- lm (data = standards, formula = diff_dD ~ analysis)
+print (lm.dD)
+```
+I don't think either slope is significant enough to do a drift correction on these data. 
+
+#Linearity Corrrection 
+using the instrument specific correction of: 
+```{r}
+
+
+```
+
+
+# Temperature Correction 
 
 
