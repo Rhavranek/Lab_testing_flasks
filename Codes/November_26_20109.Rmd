@@ -1,0 +1,219 @@
+---
+title: "November 26, 2018"
+author: "Rachel Havranek"
+date: "12/4/2018"
+output: html_document
+---
+# Load Libraries and functions 
+```{r import libraries and functions, message=FALSE}
+#setwd("/Volumes/HAVRANEK18/Lab_testing_flasks")  
+library(ggplot2)
+library (plotly)
+library (lubridate)
+library(tidyverse)
+library(grid)
+library(hms)
+library(fpp2)
+library(zoo)
+
+#derivative function 
+deriv <- function(x, y) {
+  diffvar <- diff(y) / diff(x)
+}
+
+peaks.read <- function(filepath){
+  	files <-  list.files(path=filepath, recursive = T,full.names = T) 
+	#lists the file names in the filepath directory
+  	tables <- lapply(files, read.table,header = T, stringsAsFactors = F) 
+	#reads in the files
+  	df <- do.call("rbind",tables) #combines all the tables into one dataframe
+  	df2 <- df[,c(1:2,17:19)] #subsets the dataframe to include only necessary columns
+  	df3 <- df2[complete.cases(df2),] #subsets the dataframe to include only 
+	#complete cases, eliminating rows at the end that aren't complete
+  	return(df3)
+	} #peaks.read is a function that will read files from all sub-folders of the
+	#directory named in filepath and combine them into one dataframe
+
+h2o_slope <- function(data,window){
+  H2O_Slope_Window <- numeric()
+  for (i in 1:nrow(data)){    
+    if(i<=window/2){                                                                   
+      H2O_Slope_Window[i] = 
+        as.numeric(coef(lm(data$H2O[1:(i+window/2)]~
+		data$seconds[1:(i+window/2)]))[2])
+    }else{
+      if(i >= (nrow(data)-window/2)){
+        H2O_Slope_Window[i] = 
+          as.numeric(coef(lm(data$H2O[(i-window/2):nrow(data)]~
+		data$seconds[(i-window/2):nrow(data)]))[2])
+      }else{
+        H2O_Slope_Window[i] = 
+          as.numeric(coef(lm(data$H2O[(i-window/2):(i+window/2)]~
+		data$seconds[(i-window/2):(i+window/2)]))[2])       
+      }
+    }
+  }
+  return(H2O_Slope_Window)
+} #h2o_slope will calculate the slope of h2o vs. experiment second in a moving window  
+```
+
+# Load Data 
+```{r}
+# folder_112618 <- "/Volumes/HAVRANEK18/112618"
+# data_112618 <- peaks.read(folder_112618)
+# saveRDS(data_112618, "/Volumes/HAVRANEK18/Lab_testing_flasks/data/data_112618.RDS")
+data_112618 <- readRDS("/Volumes/HAVRANEK18/Lab_testing_flasks/data/data_112618.RDS")
+```
+
+# Add in some Metadata 
+This chunk (1) creates a date/time column to match my timezone, so I can use my lab notes as a guide for data reduction, (2) adds in a linearity correction column for later comparison, (3) parses the data down to when I was running experiments, and (4) plots that water concentration data 
+
+Determined by altering push flow: 
+\[\delta^{18}O_{corr} = \delta^{18}O_{raw}+ (-0.0002*[H2O]+4.8021)\]
+\[\delta^{2}H = \delta^{2}H_{raw} + ( -0.0004*[H2O]+5.3133)\]
+```{r}
+
+data_112618 <- data_112618 %>% mutate(
+  lin_d18O = (-0.0002*H2O+4.8021) + Delta_18_16,
+    lin_dD = (-0.0004*H2O +5.31 ) + Delta_D_H,
+  MST = 
+    paste(data_112618$DATE, data_112618$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+data_112618 <- data_112618 %>% 
+  filter(MST >  "2018-11-26 15:00:00")
+
+
+all_112618 <- ggplot(data_112618, aes(MST, H2O))+
+  labs(x="Time (MST)", title="November 26, 2018")+
+  geom_point()+
+  theme_classic()
+
+ggplotly(all_112618)
+```
+
+# References 
+```{r}
+first_stand <- filter (data_112618, MST > "2018-11-26 15:58:00" & MST < "2018-11-26 16:08:00" )
+df1_1 <- data.frame(
+  "Time averaged" = 5,
+  "Type" = "Reference",
+  "valco_position" = 1,
+  "mean_d18O" = mean (first_stand$Delta_18_16),
+  "sd_d18O" = sd (first_stand$Delta_18_16),
+  "mean_dD" = mean(first_stand$Delta_D_H),
+  "sd_dD" = sd(first_stand$Delta_D_H),
+  "mean_lin_d18O" = mean(first_stand$lin_d18O),
+  "sd_lin_d18O" = sd(first_stand$lin_d18O),
+  "mean _lin_dD"= mean(first_stand$lin_dD),
+  "sd_lin_dD" = sd(first_stand$lin_dD),
+  stringsAsFactors = FALSE
+)
+
+
+fill_jumper_112618 <- filter (data_112618, MST > "2018-11-26 16:49:45" & MST < "2018-11-26 16:59:45")
+df1 <- data.frame(
+  "Time averaged" = 5,
+  "Type" = "Reference",
+  "valco_position" = 1,
+  "mean_d18O" = mean (fill_jumper_112618$Delta_18_16),
+  "sd_d18O" = sd (fill_jumper_112618$Delta_18_16),
+  "mean_dD" = mean(fill_jumper_112618$Delta_D_H),
+  "sd_dD" = sd(fill_jumper_112618$Delta_D_H),
+  "mean_lin_d18O" = mean(fill_jumper_112618$lin_d18O),
+  "sd_lin_d18O" = sd(fill_jumper_112618$lin_d18O),
+  "mean _lin_dD"= mean(fill_jumper_112618$lin_dD),
+  "sd_lin_dD" = sd(fill_jumper_112618$lin_dD),
+  stringsAsFactors = FALSE
+)
+
+references <- bind_rows(df1_1, df1)
+```
+
+##  Pull out results data and add in time averaging 
+```{r}
+Out_112618 <- data_112618 %>% 
+  filter( MST >"2018-11-26 16:10:00" & MST < "2018-11-26 16:45:00")
+
+Out_112618$seconds <- as.numeric(row.names(Out_112618))
+ 
+Out_112618 <- Out_112618 %>% 
+  mutate(
+  m_11= rollmean(H2O, k=11, fill=NA),
+  m_25=rollmean(H2O, k=25, fill=NA)) %>% 
+  subset(seconds >13 & seconds<(nrow(Out_112618)-13))
+```
+
+## Calulate the first derivative and second derivative of water concentration data, then plot the second derivative 
+```{r}
+#Initialize data frame
+Out_112618_fd<-as.data.frame(1:(nrow(Out_112618)-1))
+
+# mutate in the first derivatives, and the rolling first derivatives 
+Out_112618_fd<- Out_112618_fd %>% 
+  mutate(
+    fd = deriv(Out_112618$seconds, Out_112618$H2O),
+    fd11=deriv(Out_112618$seconds, Out_112618$m_11),
+    fd25=deriv(Out_112618$seconds, Out_112618$m_25)
+  )
+
+#Force column names so I can do the second derivative 
+colnames(Out_112618_fd, do.NULL = FALSE)
+colnames(Out_112618_fd)<-c("seconds", "fd", "fd11", "fd25")
+
+#Initialize second derivative data frame
+Out_112618_sd <- as.data.frame(1:(nrow(Out_112618_fd)-1))
+
+#Mutate in the second derivatives 
+Out_112618_sd <- Out_112618_sd %>% 
+  mutate(
+    sd=deriv(Out_112618_fd$seconds, Out_112618_fd$fd),
+    sd11=deriv(Out_112618_fd$seconds, Out_112618_fd$fd11),
+    sd25=deriv(Out_112618_fd$seconds, Out_112618_fd$fd25)
+  )
+
+#Force column names of the second derivative df 
+colnames(Out_112618_sd, do.NULL = FALSE)
+colnames(Out_112618_sd)<-c("seconds", "sd", "sd11", "sd25")
+
+sd_112618_plot<-ggplot(Out_112618_sd)+
+  geom_point(aes(seconds, sd),colour = "green")+
+  geom_point(aes(seconds, sd11),colour = "blue")+
+  geom_point(aes(seconds, sd25), colour = "red")+
+  # annotation_custom(label1)+
+  # annotation_custom(label2)+
+  # annotation_custom(label3)+
+  # annotation_custom(label4)+
+  scale_y_continuous(limits = c(-5, 5))+
+  labs(x="Seconds", title="second derivative")+
+  theme_classic()
+
+print(sd_112618_plot)
+ggplotly(sd_112618_plot)
+```
+From this plot I'm cutting off everything before 686 seconds. And doing a 300 second average. 
+
+## Calculate results and summarize in one table 
+```{r}
+results_112618_2 <- filter (Out_112618, seconds > 686 & seconds < 987)
+R2_df <- data.frame(
+  "valco_position" = 2,
+  "Time averaged" = 5,
+  "Type" = "result",
+  "mean_d18O" = mean (results_112618_2$Delta_18_16),
+  "sd_d18O" = sd (results_112618_2$Delta_18_16),
+  "mean_dD" = mean(results_112618_2$Delta_D_H),
+  "sd_dD" = sd(results_112618_2$Delta_D_H),
+  "mean_lin_d18O" = mean(results_112618_2$lin_d18O),
+  "sd_lin_d18O" = sd(results_112618_2$lin_d18O),
+  "mean _lin_dD"= mean(results_112618_2$lin_dD),
+   "sd_lin_dD" = sd(results_112618_2$lin_dD),
+  stringsAsFactors = FALSE
+)
+
+summary_112618 <- bind_rows(references, R2_df)
+# write.csv (summary_112618, "/Volumes/HAVRANEK18/Lab_testing_flasks/data_output/112618 Summary.csv")
+```
+

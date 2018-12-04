@@ -1,0 +1,197 @@
+---
+title: "December 3, 2018"
+author: "Rachel Havranek"
+date: "12/4/2018"
+output: html_document
+---
+# Load Libraries and functions 
+```{r import libraries and functions, message=FALSE}
+#setwd("/Volumes/HAVRANEK18/Lab_testing_flasks")  
+library(ggplot2)
+library (plotly)
+library (lubridate)
+library(tidyverse)
+library(grid)
+library(hms)
+library(fpp2)
+library(zoo)
+
+#derivative function 
+deriv <- function(x, y) {
+  diffvar <- diff(y) / diff(x)
+}
+
+peaks.read <- function(filepath){
+  	files <-  list.files(path=filepath, recursive = T,full.names = T) 
+	#lists the file names in the filepath directory
+  	tables <- lapply(files, read.table,header = T, stringsAsFactors = F) 
+	#reads in the files
+  	df <- do.call("rbind",tables) #combines all the tables into one dataframe
+  	df2 <- df[,c(1:2,17:19)] #subsets the dataframe to include only necessary columns
+  	df3 <- df2[complete.cases(df2),] #subsets the dataframe to include only 
+	#complete cases, eliminating rows at the end that aren't complete
+  	return(df3)
+	} #peaks.read is a function that will read files from all sub-folders of the
+	#directory named in filepath and combine them into one dataframe
+
+h2o_slope <- function(data,window){
+  H2O_Slope_Window <- numeric()
+  for (i in 1:nrow(data)){    
+    if(i<=window/2){                                                                   
+      H2O_Slope_Window[i] = 
+        as.numeric(coef(lm(data$H2O[1:(i+window/2)]~
+		data$seconds[1:(i+window/2)]))[2])
+    }else{
+      if(i >= (nrow(data)-window/2)){
+        H2O_Slope_Window[i] = 
+          as.numeric(coef(lm(data$H2O[(i-window/2):nrow(data)]~
+		data$seconds[(i-window/2):nrow(data)]))[2])
+      }else{
+        H2O_Slope_Window[i] = 
+          as.numeric(coef(lm(data$H2O[(i-window/2):(i+window/2)]~
+		data$seconds[(i-window/2):(i+window/2)]))[2])       
+      }
+    }
+  }
+  return(H2O_Slope_Window)
+} #h2o_slope will calculate the slope of h2o vs. experiment second in a moving window  
+```
+
+# Load Data 
+```{r}
+# folder_120318 <- "/Volumes/HAVRANEK18/120318"
+# data_120318 <- peaks.read(folder_120318)
+# saveRDS(data_120318, "/Volumes/HAVRANEK18/Lab_testing_flasks/data/data_120318.RDS")
+data_120318 <- readRDS("/Volumes/HAVRANEK18/Lab_testing_flasks/data/data_120318.RDS")
+```
+
+# Add in some Metadata
+This chunk (1) creates a date/time column to match my timezone, so I can use my lab notes as a guide for data reduction, (2) adds in a linearity correction column for later comparison, (3) parses the data down to when I was running experiments, and (4) plots that water concentration data 
+
+Determined by altering push flow: 
+\[\delta^{18}O_{corr} = \delta^{18}O_{raw}+ (-0.0002*[H2O]+4.8021)\]
+\[\delta^{2}H = \delta^{2}H_{raw} + ( -0.0004*[H2O]+5.3133)\]
+```{r}
+
+data_120318 <- data_120318 %>% mutate(
+  lin_d18O = (-0.0002*H2O+4.8021) + Delta_18_16,
+    lin_dD = (-0.0004*H2O +5.31 ) + Delta_D_H,
+  MST = 
+    paste(data_120318$DATE, data_120318$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+data_120318 <- data_120318 %>% 
+  filter(MST >  "2018-11-26 15:00:00")
+
+# These labels help me tie to my notes more easily 
+
+#These labels help me visually in my plots 
+label1 <- grobTree(textGrob("Bottle 16", x=0.2,  y=0.95, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+label2 <- grobTree(textGrob("Bottle 15", x=0.45,  y=0.95, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+label3 <- grobTree(textGrob("Bottle 14", x=0.78,  y=0.95, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+label4 <- grobTree(textGrob("Probe 2", x=0.05,  y=0.95, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+label5 <- grobTree(textGrob("Probe 1", x=0.34,  y=0.95, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+label6 <- grobTree(textGrob("Probe 1", x=0.57,  y=0.95, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+label7 <- grobTree(textGrob("Probe 2", x=0.66,  y=0.98, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+label8 <- grobTree(textGrob("Probe 1", x=0.9,  y=0.95, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+all_120318 <- ggplot(data_120318, aes(MST, H2O))+
+  labs(x="Time (MST)", title="November 26, 2018")+
+  geom_point()+
+  theme_classic()+annotation_custom(label1)+
+  annotation_custom(label2)+
+  annotation_custom(label3)+
+  annotation_custom(label4)+
+  annotation_custom(label5)+
+  annotation_custom(label6)+
+  annotation_custom(label7)+
+  annotation_custom(label8)
+
+all_120318
+```
+
+```{r}
+Out_120318 <- data_120318 
+
+Out_120318$seconds <- as.numeric(row.names(Out_120318))
+ 
+Out_120318 <- Out_120318 %>% 
+  mutate(
+  m_11= rollmean(H2O, k=11, fill=NA),
+  m_25=rollmean(H2O, k=25, fill=NA)) %>% 
+  subset(seconds >13 & seconds<(nrow(Out_120318)-13))
+```
+
+
+## Calulate the first derivative and second derivative of water concentration data, then plot the second derivative 
+```{r}
+#Initialize data frame
+Out_120318_fd<-as.data.frame(1:(nrow(Out_120318)-1))
+
+# mutate in the first derivatives, and the rolling first derivatives 
+Out_120318_fd<- Out_120318_fd %>% 
+  mutate(
+    fd = deriv(Out_120318$seconds, Out_120318$H2O),
+    fd11=deriv(Out_120318$seconds, Out_120318$m_11),
+    fd25=deriv(Out_120318$seconds, Out_120318$m_25)
+  )
+
+#Force column names so I can do the second derivative 
+colnames(Out_120318_fd, do.NULL = FALSE)
+colnames(Out_120318_fd)<-c("seconds", "fd", "fd11", "fd25")
+
+#Initialize second derivative data frame
+Out_120318_sd <- as.data.frame(1:(nrow(Out_120318_fd)-1))
+
+#Mutate in the second derivatives 
+Out_120318_sd <- Out_120318_sd %>% 
+  mutate(
+    sd=deriv(Out_120318_fd$seconds, Out_120318_fd$fd),
+    sd11=deriv(Out_120318_fd$seconds, Out_120318_fd$fd11),
+    sd25=deriv(Out_120318_fd$seconds, Out_120318_fd$fd25)
+  )
+
+#Force column names of the second derivative df 
+colnames(Out_120318_sd, do.NULL = FALSE)
+colnames(Out_120318_sd)<-c("seconds", "sd", "sd11", "sd25")
+
+sd_120318_plot<-ggplot(Out_120318_sd)+
+  #geom_point(aes(seconds, sd),colour = "green")+
+  geom_point(aes(seconds, sd11),colour = "blue")+
+  geom_point(aes(seconds, sd25), colour = "red")+
+  annotation_custom(label1)+
+  annotation_custom(label2)+
+  annotation_custom(label3)+
+  annotation_custom(label4)+
+  annotation_custom(label5)+
+  annotation_custom(label6)+
+  annotation_custom(label7)+
+  annotation_custom(label8)+
+  scale_y_continuous(limits = c(-5, 5))+
+  labs(x="Seconds", title="second derivative")+
+  theme_classic()
+
+print(sd_120318_plot)
+ggplotly(sd_120318_plot)
+```
+
+16 - 3367 - 3668
+15 - 7824 - 8125
+14 - 13046 - 13347

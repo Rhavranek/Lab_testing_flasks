@@ -1,0 +1,156 @@
+---
+title: "November 19, 2018"
+author: "Rachel Havranek"
+date: "12/3/2018"
+output: html_document
+---
+
+# Load Libraries and functions 
+```{r import libraries and functions, message=FALSE}
+#setwd("/Volumes/HAVRANEK18/Lab_testing_flasks")  
+library(ggplot2)
+library (plotly)
+library (lubridate)
+library(tidyverse)
+library(grid)
+library(hms)
+library(fpp2)
+library(zoo)
+
+#derivative function 
+deriv <- function(x, y) {
+  diffvar <- diff(y) / diff(x)
+}
+
+peaks.read <- function(filepath){
+  	files <-  list.files(path=filepath, recursive = T,full.names = T) 
+	#lists the file names in the filepath directory
+  	tables <- lapply(files, read.table,header = T, stringsAsFactors = F) 
+	#reads in the files
+  	df <- do.call("rbind",tables) #combines all the tables into one dataframe
+  	df2 <- df[,c(1:2,17:19)] #subsets the dataframe to include only necessary columns
+  	df3 <- df2[complete.cases(df2),] #subsets the dataframe to include only 
+	#complete cases, eliminating rows at the end that aren't complete
+  	return(df3)
+	} #peaks.read is a function that will read files from all sub-folders of the
+	#directory named in filepath and combine them into one dataframe
+
+h2o_slope <- function(data,window){
+  H2O_Slope_Window <- numeric()
+  for (i in 1:nrow(data)){    
+    if(i<=window/2){                                                                   
+      H2O_Slope_Window[i] = 
+        as.numeric(coef(lm(data$H2O[1:(i+window/2)]~
+		data$seconds[1:(i+window/2)]))[2])
+    }else{
+      if(i >= (nrow(data)-window/2)){
+        H2O_Slope_Window[i] = 
+          as.numeric(coef(lm(data$H2O[(i-window/2):nrow(data)]~
+		data$seconds[(i-window/2):nrow(data)]))[2])
+      }else{
+        H2O_Slope_Window[i] = 
+          as.numeric(coef(lm(data$H2O[(i-window/2):(i+window/2)]~
+		data$seconds[(i-window/2):(i+window/2)]))[2])       
+      }
+    }
+  }
+  return(H2O_Slope_Window)
+} #h2o_slope will calculate the slope of h2o vs. experiment second in a moving window  
+```
+
+# Load Data 
+```{r}
+# folder_111918 <- "/Volumes/HAVRANEK18/111918"
+# data_111918 <- peaks.read(folder_111918)
+# saveRDS(data_111918, "/Volumes/HAVRANEK18/Lab_testing_flasks/data/data_111918.RDS")
+data_111918 <- readRDS("/Volumes/HAVRANEK18/Lab_testing_flasks/data/data_111918.RDS")
+```
+
+# Add in some Metadata 
+This chunk (1) creates a date/time column to match my timezone, so I can use my lab notes as a guide for data reduction, (2) adds in a linearity correction column for later comparison, (3) parses the data down to when I was running experiments, and (4) plots that water concentration data 
+
+using the instrument specific correction of:  *This is peice isn't ready to go yet* 
+
+Determined by altering push flow: 
+\[\delta^{18}O_{corr} = \delta^{18}O_{raw}+ (-0.0002*[H2O]+4.8021)\]
+\[\delta^{2}H = \delta^{2}H_{raw} + ( -0.0004*[H2O]+5.3133)\]
+```{r}
+data_111918 <- data_111918 %>% mutate(
+  lin_d18O = (-0.0002*H2O+4.8021) + Delta_18_16,
+    lin_dD = (-0.0004*H2O +5.31 ) + Delta_D_H,
+  MST = 
+    paste(data_111918$DATE, data_111918$TIME) %>% 
+    ymd_hms() %>% 
+    with_tz(tzone=c("America/Denver"))
+)
+
+data_111918 <- data_111918 %>% filter (
+  MST >  "2018-11-19 8:00:00" & MST < "2018-11-19 11:00:00"
+)
+
+label1 <- grobTree(textGrob("Jumper", x=0.3,  y=0.95, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+label2 <- grobTree(textGrob("Bottle 2", x=0.45,  y=0.85, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+label3 <- grobTree(textGrob("Jumper", x=0.55,  y=0.8, hjust=0,
+  gp=gpar(col="red", fontsize=13, fontface="italic")))
+
+all_111918 <- ggplot(data_111918, aes(MST, H2O))+
+  labs(x="Time (MST)", title="November 19, 2018")+
+  geom_point()+
+  theme_classic()+
+  annotation_custom(label1)+
+  annotation_custom(label2)+
+  annotation_custom(label3)
+
+all_111918
+```
+
+```{r}
+first_stand <- filter (data_111918, MST > "2018-11-19 08:51:00" & MST < "2018-11-19 09:01:00" )
+df1_1 <- data.frame(
+  "Time averaged" = 10,
+  "Type" = "Correction",
+  "valco_position" = 1,
+  "mean_d18O" = mean (first_stand$Delta_18_16),
+  "sd_d18O" = sd (first_stand$Delta_18_16),
+  "mean_dD" = mean(first_stand$Delta_D_H),
+  "sd_dD" = sd(first_stand$Delta_D_H),
+  "mean_lin_d18O" = mean(first_stand$lin_d18O),
+  "mean _lin_dD"= mean(first_stand$lin_dD),
+  stringsAsFactors = FALSE
+)
+
+fill_2_111918 <- filter (data_111918, MST > "2018-11-19 09:34:00" & MST < "2018-11-19 09:44:00")
+df2 <- data.frame(
+  "Time averaged" = 10,
+  "Type" = "Fill",
+  "valco_position" = 2,
+  "mean_d18O" = mean (fill_2_111918$Delta_18_16),
+  "sd_d18O" = sd (fill_2_111918$Delta_18_16),
+  "mean_dD" = mean(fill_2_111918$Delta_D_H),
+  "sd_dD" = sd(fill_2_111918$Delta_D_H),
+  "mean_lin_d18O" = mean(fill_2_111918$lin_d18O),
+  "mean _lin_dD"= mean(fill_2_111918$lin_dD),
+  stringsAsFactors = FALSE
+)
+
+fill_jumper_111918 <- filter (data_111918, MST > "2018-11-19 09:47:00" & MST < "2018-11-19 09:57:00")
+df1 <- data.frame(
+  "Time averaged" = 10,
+  "Type" = "Correction",
+  "valco_position" = 1,
+  "mean_d18O" = mean (fill_jumper_111918$Delta_18_16),
+  "sd_d18O" = sd (fill_jumper_111918$Delta_18_16),
+  "mean_dD" = mean(fill_jumper_111918$Delta_D_H),
+  "sd_dD" = sd(fill_jumper_111918$Delta_D_H),
+  "mean_lin_d18O" = mean(fill_jumper_111918$lin_d18O),
+  "mean _lin_dD"= mean(fill_jumper_111918$lin_dD),
+  stringsAsFactors = FALSE
+)
+summary_111918 <-  bind_rows(df1_1, df2, df1 )
+write.csv(summary_111918, "/Volumes/HAVRANEK18/Lab_testing_flasks/data_output/111918 Summary.csv")
+```
+
