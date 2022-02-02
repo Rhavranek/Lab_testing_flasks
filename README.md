@@ -1,3 +1,3 @@
-# 2020 Rapid Communications data  
+# Early prototype testing
 
-This is some data and code associated with my 2020 Rapid Communications paper 
+This was the early prototype data done in IsoLab. I was using 4 flasks at the time. This data was also presented on a poster at AGU in fall 2018. 
